@@ -1710,21 +1710,21 @@ Final acceptance. The MVP is considered complete when:
 |---|---|---|---|---|
 | T-001 | Project Scaffolding | M1 | — | DONE |
 | T-002 | SQLite Database Layer | M1 | T-001 | DONE |
-| T-003 | Telegram Bot — Basic | M1 | T-001, T-002 | IN_PROGRESS |
+| T-003 | Telegram Bot — Basic | M1 | T-001, T-002 | DONE |
 | T-004 | Claude API Client | M1 | T-001 | DONE |
-| T-005 | Persona Prompt Design | M1 | T-004 | IN_PROGRESS |
-| T-006 | Concierge Brain — Reactive | M1 | T-002–T-005 | BLOCKED |
-| T-007 | Safety Filter | M1 | T-004, T-005 | BLOCKED |
-| T-008 | Oura Ring Data Sync | M1 | T-001, T-002 | IN_PROGRESS |
-| T-009 | Garmin Connect Data Sync | M1 | T-001, T-002 | IN_PROGRESS |
-| T-010 | Strava Data Sync | M1 | T-001, T-002 | IN_PROGRESS |
-| T-011 | Renpho Data Sync | M1 | T-001, T-002 | IN_PROGRESS |
-| T-012 | Unified Data Sync Runner | M1 | T-008–T-011 | BLOCKED |
+| T-005 | Persona Prompt Design | M1 | T-004 | DONE |
+| T-006 | Concierge Brain — Reactive | M1 | T-002–T-005 | IN_PROGRESS |
+| T-007 | Safety Filter | M1 | T-004, T-005 | IN_PROGRESS |
+| T-008 | Oura Ring Data Sync | M1 | T-001, T-002 | DONE |
+| T-009 | Garmin Connect Data Sync | M1 | T-001, T-002 | DONE |
+| T-010 | Strava Data Sync | M1 | T-001, T-002 | DONE |
+| T-011 | Renpho Data Sync | M1 | T-001, T-002 | DONE |
+| T-012 | Unified Data Sync Runner | M1 | T-008–T-011 | IN_PROGRESS |
 | T-013 | Onboarding Conversation | M1 | T-006 | BLOCKED |
 | A-M1 | Milestone 1 Acceptance | M1 | T-003–T-013 | BLOCKED |
 | T-014 | Morning Check-In | M2 | A-M1 | BLOCKED |
 | T-015 | Evening Check-In | M2 | A-M1 | BLOCKED |
-| T-016 | Frequency Governor | M2 | T-002 | BLOCKED |
+| T-016 | Frequency Governor | M2 | T-002 | IN_PROGRESS |
 | T-017 | Engagement State Machine | M2 | T-016 | BLOCKED |
 | T-018 | Proactive Nudges | M2 | T-014–T-016 | BLOCKED |
 | T-019 | Cron Configuration | M2 | T-014, T-015, T-018, T-012 | BLOCKED |
