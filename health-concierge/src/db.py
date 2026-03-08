@@ -7,7 +7,7 @@ Wraps raw parameterized SQL queries.
 import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from config import settings
@@ -191,18 +191,44 @@ def save_message(
         )
 
 
-def get_recent_messages(user_id: str, limit: int = 20) -> list[dict]:
-    """Return the most recent messages for a user, newest first."""
+def get_recent_messages(user_id: str, limit: int = 20, days: int = 7) -> list[dict]:
+    """Return the most recent messages for a user, newest first.
+
+    Only returns messages from the last ``days`` days (default 7).
+    The ``limit`` cap is still applied on top of the date filter.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM messages WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
-            (user_id, limit),
+            "SELECT * FROM messages WHERE user_id = ? AND created_at >= ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (user_id, cutoff, limit),
         ).fetchall()
     result = _rows_to_dicts(rows)
     for msg in result:
         if msg.get("extracted_data"):
             msg["extracted_data"] = json.loads(msg["extracted_data"])
     return result
+
+
+def archive_old_messages(user_id: str, days: int = 30) -> int:
+    """Delete messages older than ``days`` days for a user.
+
+    Daily summaries serve as the permanent record, so raw messages
+    beyond the retention window can safely be removed.
+
+    Returns the number of deleted rows.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM messages WHERE user_id = ? AND created_at < ?",
+            (user_id, cutoff),
+        )
+        deleted = cursor.rowcount
+    if deleted:
+        logger.info("Archived %d messages older than %d days for user=%s", deleted, days, user_id)
+    return deleted
 
 
 # --- Engagement State ---

@@ -52,6 +52,12 @@ def main() -> None:
         except Exception:
             logger.exception("Failed to generate summary for user=%s date=%s", user_id, date)
 
+        # Clean up old messages (daily summaries serve as permanent record)
+        try:
+            db.archive_old_messages(user_id, days=30)
+        except Exception:
+            logger.exception("Failed to archive old messages for user=%s", user_id)
+
 
 if __name__ == "__main__":
     main()
