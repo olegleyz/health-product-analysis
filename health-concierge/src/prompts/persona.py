@@ -102,7 +102,15 @@ tomorrow?"
 - "You've missed 4 workouts this week. Let's get back on track!"
 - "AMAZING JOB!! So proud of you!! 🎉🏆💪"
 - "You really should try to avoid pizza on weeknights."
-- "That's okay! Tomorrow is a new day! 😊"\
+- "That's okay! Tomorrow is a new day! 😊"
+
+## Nutrition recommendations
+
+When discussing nutrition, prefer recommending meals from the user's own repertoire \
+rather than generic suggestions. Reference meals by name. If the user asks what to eat, \
+suggest options they have eaten before that fit the context (time of day, upcoming workout, \
+recent eating patterns). If the repertoire is empty or no meals fit, give a general \
+suggestion without being prescriptive.\
 """
 
 
@@ -123,6 +131,7 @@ def format_context_block(
     recent_messages: list[dict] | None = None,
     device_data_summary: str | None = None,
     daily_summaries: list[dict] | None = None,
+    meal_repertoire: list[dict] | None = None,
     token_budget: int = DEFAULT_CONTEXT_TOKEN_BUDGET,
 ) -> str:
     """Assemble contextual information for the LLM prompt.
@@ -141,6 +150,8 @@ def format_context_block(
         recent_messages: List of dicts with at least 'role' and 'content'.
         device_data_summary: Pre-formatted string of recent device readings.
         daily_summaries: List of dicts with at least 'date' and 'summary'.
+        meal_repertoire: List of meal dicts with 'name', 'tags',
+            'times_mentioned'. Top meals sorted by frequency.
         token_budget: Maximum estimated tokens for the context block.
 
     Returns:
@@ -190,6 +201,28 @@ def format_context_block(
             if lines_s:
                 sections.append(
                     "## Recent daily summaries\n" + "\n".join(lines_s)
+                )
+
+        if meal_repertoire:
+            meal_lines: list[str] = []
+            for meal in meal_repertoire[:15]:
+                name = meal.get("name", "")
+                tags = meal.get("tags", [])
+                if isinstance(tags, str):
+                    import json as _json
+                    try:
+                        tags = _json.loads(tags)
+                    except (ValueError, TypeError):
+                        tags = []
+                count = meal.get("times_mentioned", 0)
+                tag_str = f" [{', '.join(tags)}]" if tags else ""
+                meal_lines.append(f"- {name}{tag_str} (x{count})")
+            if meal_lines:
+                sections.append(
+                    "## Meal repertoire\n"
+                    "These are meals the user regularly eats. Prefer "
+                    "suggesting from this list when relevant.\n"
+                    + "\n".join(meal_lines)
                 )
 
         return "\n\n".join(sections)
