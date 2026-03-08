@@ -19,5 +19,11 @@ PROJECT_DIR=/path/to/health-concierge
 # Nudge checks — every 2 hours during waking hours (9 AM - 10 PM)
 0 9-22/2 * * * cd $PROJECT_DIR && .venv/bin/python scripts/check_nudges.py >> logs/nudges.log 2>&1
 
+# Daily summary — 11:30 PM
+30 23 * * * cd $PROJECT_DIR && .venv/bin/python scripts/daily_summary.py >> logs/summary.log 2>&1
+
+# Weekly reflection — Sunday 8:00 PM
+0 20 * * 0 cd $PROJECT_DIR && .venv/bin/python scripts/weekly_reflection.py >> logs/proactive.log 2>&1
+
 # Daily counter reset — midnight
 0 0 * * * cd $PROJECT_DIR && .venv/bin/python scripts/reset_daily.py >> logs/system.log 2>&1
