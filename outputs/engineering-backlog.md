@@ -1735,10 +1735,10 @@ Final acceptance. The MVP is considered complete when:
 | T-023 | Meal Extraction & Memory | M3 | A-M2 | DONE |
 | T-024 | Nutrition Recommendations | M3 | T-023, T-021 | DONE |
 | T-025 | Weekly Reflection | M3 | T-020, T-021 | DONE |
-| T-026 | Update Cron Config | M3 | T-020, T-025, T-019 | IN_PROGRESS |
-| A-M3 | Milestone 3 Acceptance | M3 | T-020–T-026 | BLOCKED |
-| T-027 | Bug Fixes (M3 Feedback) | M4 | A-M3 | BLOCKED |
-| T-028 | Tone Tuning | M4 | A-M3 | BLOCKED |
+| T-026 | Update Cron Config | M3 | T-020, T-025, T-019 | DONE |
+| A-M3 | Milestone 3 Acceptance | M3 | T-020–T-026 | DONE |
+| T-027 | Bug Fixes (M3 Feedback) | M4 | A-M3 | IN_PROGRESS |
+| T-028 | Tone Tuning | M4 | A-M3 | IN_PROGRESS |
 | T-029 | System Hardening | M4 | T-027, T-028 | BLOCKED |
 | A-MVP | Final MVP Acceptance | M4 | T-029 | BLOCKED |
 
