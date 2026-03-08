@@ -1,0 +1,3 @@
+# Health Concierge — Data Sync
+# Run every 4 hours
+0 */4 * * * cd /path/to/health-concierge && .venv/bin/python scripts/sync_all.py >> logs/sync.log 2>&1
