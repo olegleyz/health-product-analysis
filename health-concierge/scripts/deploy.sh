@@ -40,7 +40,7 @@ if [ -d "$PROJECT_DIR" ]; then
     cd "$PROJECT_DIR"
     git pull origin master
 else
-    git clone "$REPO_URL" "$PROJECT_DIR"
+    git clone -b master "$REPO_URL" "$PROJECT_DIR"
 fi
 
 cd "$APP_DIR"
