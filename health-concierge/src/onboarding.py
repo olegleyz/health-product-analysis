@@ -6,6 +6,7 @@ tone, accountability, struggles, then marks onboarding complete.
 """
 
 import logging
+from datetime import datetime, timezone
 
 from src.db import get_user, upsert_user
 from src.llm import call_llm, call_llm_json
@@ -151,18 +152,26 @@ def handle_onboarding_message(user_id: str, text: str) -> str:
     prefs["onboarding_step"] = next_step
     prefs["collected"] = collected
 
+    now = datetime.now(timezone.utc)
+    date_context = (
+        f"Current date/time: {now.strftime('%A, %B %d, %Y %I:%M %p')} UTC. "
+        "Use this for any references to days or times. "
+        "Never guess the day of week — use the date above. "
+        "Preserve the user's exact times (AM/PM) — never flip them."
+    )
+
     if next_step is None:
         # Onboarding complete — save collected data to user profile
         _save_onboarding_data(user_id, collected)
         upsert_user(user_id, onboarding_complete=1, preferences=prefs)
         # Generate completion message
-        context = f"Collected info: {collected}"
+        context = f"{date_context}\nCollected info: {collected}"
         response = call_llm(_STEP_QUESTIONS["complete"], context)
         return response
     else:
         upsert_user(user_id, preferences=prefs)
         # Generate the next question
-        context = f"User's last message: {text}\nCollected so far: {collected}"
+        context = f"{date_context}\nUser's last message: {text}\nCollected so far: {collected}"
         response = call_llm(_STEP_QUESTIONS[next_step], context)
         return response
 
