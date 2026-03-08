@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 import anthropic
 import pytest
 
-from src.llm import call_llm, call_llm_json
+from src.llm import call_llm, call_llm_json, _strip_markdown_fences
 
 
 def _mock_response(text: str = "Hello", input_tokens: int = 10, output_tokens: int = 5):
@@ -109,3 +109,44 @@ def test_token_usage_logged(mock_get_client, caplog):
 
     assert "input_tokens=42" in caplog.text
     assert "output_tokens=17" in caplog.text
+
+
+# --- Markdown fence stripping tests ---
+
+
+def test_strip_markdown_fences_json_block():
+    """Strips ```json ... ``` fences."""
+    text = '```json\n{"key": "value"}\n```'
+    assert _strip_markdown_fences(text) == '{"key": "value"}'
+
+
+def test_strip_markdown_fences_plain_block():
+    """Strips ``` ... ``` fences without language tag."""
+    text = '```\n{"key": "value"}\n```'
+    assert _strip_markdown_fences(text) == '{"key": "value"}'
+
+
+def test_strip_markdown_fences_no_fences():
+    """Passes through plain JSON unchanged."""
+    text = '{"key": "value"}'
+    assert _strip_markdown_fences(text) == '{"key": "value"}'
+
+
+def test_strip_markdown_fences_with_whitespace():
+    """Handles leading/trailing whitespace around fenced JSON."""
+    text = '  ```json\n{"key": "value"}\n```  '
+    assert _strip_markdown_fences(text) == '{"key": "value"}'
+
+
+@patch("src.llm._get_client")
+def test_call_llm_json_strips_markdown_fences(mock_get_client):
+    """call_llm_json handles LLM responses wrapped in markdown fences."""
+    client = mock_get_client.return_value
+    client.messages.create.return_value = _mock_response(
+        '```json\n{"key": "value"}\n```'
+    )
+
+    result = call_llm_json("You are helpful.", "Return JSON")
+
+    assert isinstance(result, dict)
+    assert result == {"key": "value"}

@@ -53,9 +53,15 @@ def _get_messages_for_date(user_id: str, date: str) -> list[dict]:
 
 
 def _get_device_data_for_date(user_id: str, date: str) -> list[dict]:
-    """Fetch all device data for a user on a specific date."""
+    """Fetch all device data for a user on a specific date.
+
+    Filters to only records with recorded_at on the given date to avoid
+    including data from subsequent days.
+    """
     start = f"{date}T00:00:00"
-    return db.get_device_data(user_id, since=start)
+    end = f"{date}T23:59:59"
+    records = db.get_device_data(user_id, since=start)
+    return [r for r in records if r.get("recorded_at", "") <= end]
 
 
 def _build_day_context(messages: list[dict], device_data: list[dict]) -> str:
