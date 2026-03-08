@@ -18,6 +18,13 @@
 - Note: Parallel agents caused working directory conflicts; resolved via manual merge cleanup
 - Starting Wave 4: T-006 (Brain), T-007 (Safety), T-012 (Sync Runner), T-016 (Governor)
 
+## 2026-03-08 — Milestone 3 Complete
+- All M3 tasks done: T-020 through T-026
+- Tests passing: 213/213 (44 new tests)
+- Demo report: outputs/demo-M3.md
+- Acceptance: PASS
+- Starting Milestone 4: T-027 (Bug Fixes), T-028 (Tone Tuning)
+
 ## 2026-03-08 — Milestone 2 Complete
 - All M2 tasks done: T-014, T-015, T-018, T-019 (plus T-016, T-017 pulled from M1)
 - Tests passing: 169/169
