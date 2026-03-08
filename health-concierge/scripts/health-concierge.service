@@ -1,0 +1,16 @@
+[Unit]
+Description=Health Concierge Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=%h/health-concierge/health-concierge
+ExecStart=%h/health-concierge/health-concierge/.venv/bin/python -m src.bot
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:%h/health-concierge/health-concierge/logs/bot.log
+StandardError=append:%h/health-concierge/health-concierge/logs/bot.log
+
+[Install]
+WantedBy=multi-user.target
