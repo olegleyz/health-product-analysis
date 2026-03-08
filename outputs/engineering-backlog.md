@@ -1726,8 +1726,8 @@ Final acceptance. The MVP is considered complete when:
 | T-015 | Evening Check-In | M2 | A-M1 | DONE |
 | T-016 | Frequency Governor | M2 | T-002 | DONE |
 | T-017 | Engagement State Machine | M2 | T-016 | DONE |
-| T-018 | Proactive Nudges | M2 | T-014–T-016 | IN_PROGRESS |
-| T-019 | Cron Configuration | M2 | T-014, T-015, T-018, T-012 | BLOCKED |
+| T-018 | Proactive Nudges | M2 | T-014–T-016 | DONE |
+| T-019 | Cron Configuration | M2 | T-014, T-015, T-018, T-012 | IN_PROGRESS |
 | A-M2 | Milestone 2 Acceptance | M2 | T-014–T-019 | BLOCKED |
 | T-020 | Daily Summary Generation | M3 | A-M2 | BLOCKED |
 | T-021 | Enhanced Prompt Builder | M3 | T-020 | BLOCKED |
