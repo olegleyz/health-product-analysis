@@ -185,3 +185,163 @@ def generate_morning_checkin(user_id: str) -> str | None:
 
     logger.info("Generated morning check-in for user %s", user_id)
     return message
+
+
+# --- Evening check-in ---
+
+
+def _today_iso() -> str:
+    """Return today's date as ISO date string (YYYY-MM-DD) in UTC."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _get_todays_activities(user_id: str) -> list[dict]:
+    """Fetch today's activity records from device data (garmin/strava)."""
+    today = _today_iso()
+    activities: list[dict] = []
+    for source in ("garmin", "strava"):
+        records = db.get_device_data(
+            user_id, source=source, data_type="activity", since=today
+        )
+        activities.extend(records)
+    return activities
+
+
+def _format_activities_summary(activities: list[dict]) -> str:
+    """Format a list of activity records into a readable summary."""
+    if not activities:
+        return ""
+    lines: list[str] = []
+    for act in activities:
+        data = act.get("data", {})
+        name = data.get("name", data.get("type", "Activity"))
+        duration = data.get("duration_minutes", "?")
+        source = act.get("source", "unknown")
+        lines.append(f"- {name} ({duration} min) via {source}")
+    return "\n".join(lines)
+
+
+def _morning_checkin_sent_today(user_id: str) -> bool:
+    """Check if a morning check-in was sent today."""
+    today = _today_iso()
+    with db.get_connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM messages "
+            "WHERE user_id = ? AND direction = 'outbound' "
+            "AND trigger_type = 'morning_check_in' "
+            "AND created_at >= ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (user_id, today),
+        ).fetchone()
+    return row is not None
+
+
+def _user_replied_since_morning_checkin(user_id: str) -> bool:
+    """Check if the user sent any message after today's morning check-in."""
+    today = _today_iso()
+    with db.get_connection() as conn:
+        morning_row = conn.execute(
+            "SELECT created_at FROM messages "
+            "WHERE user_id = ? AND direction = 'outbound' "
+            "AND trigger_type = 'morning_check_in' "
+            "AND created_at >= ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (user_id, today),
+        ).fetchone()
+        if morning_row is None:
+            return True  # No morning check-in sent, no issue
+
+        morning_ts = morning_row["created_at"]
+
+        reply_row = conn.execute(
+            "SELECT id FROM messages "
+            "WHERE user_id = ? AND direction = 'inbound' "
+            "AND created_at > ? "
+            "LIMIT 1",
+            (user_id, morning_ts),
+        ).fetchone()
+    return reply_row is not None
+
+
+def _build_evening_prompt(
+    user_profile: dict | None,
+    activities: list[dict],
+    activities_summary: str,
+    recent_messages: list[dict],
+) -> str:
+    """Build the user-message prompt for the evening check-in LLM call."""
+    context = format_context_block(
+        user_profile=user_profile,
+        recent_messages=[
+            {"role": m["direction"], "content": m["content"]}
+            for m in reversed(recent_messages)
+        ],
+        device_data_summary=activities_summary or None,
+    )
+
+    if activities:
+        activity_instruction = (
+            "The user trained today. Acknowledge the workout briefly and "
+            "ask how it felt. Here are today's activities:\n"
+            f"{activities_summary}"
+        )
+    else:
+        activity_instruction = (
+            "No workout was detected today. This could be a rest day — "
+            "that's perfectly fine. Do not be judgmental or imply they should "
+            "have worked out."
+        )
+
+    instructions = [
+        "Generate an evening check-in message for this user.",
+        "It's the end of their day — they are winding down.",
+        "Keep it short: 1-2 sentences maximum.",
+        "Ask one open-ended question about how their day went.",
+        "Be warm but not over-the-top.",
+        "Follow all persona and safety rules.",
+        activity_instruction,
+    ]
+
+    prompt = ""
+    if context:
+        prompt += context + "\n\n"
+    prompt += "## Instructions\n" + "\n".join(f"- {i}" for i in instructions)
+
+    return prompt
+
+
+def generate_evening_checkin(user_id: str) -> str | None:
+    """Generate an evening check-in message.
+
+    Returns None if governor blocks, morning check-in was unanswered,
+    or there's another reason to skip.
+    """
+    # Step 1: Check governor
+    if not can_send(user_id, "check_in"):
+        logger.info("Evening check-in blocked by governor for user %s", user_id)
+        return None
+
+    # Step 2: Skip if morning check-in was sent today but user hasn't replied
+    if _morning_checkin_sent_today(user_id) and not _user_replied_since_morning_checkin(user_id):
+        logger.info(
+            "Skipping evening check-in for user %s: morning check-in unanswered",
+            user_id,
+        )
+        return None
+
+    # Step 3: Load today's activities
+    activities = _get_todays_activities(user_id)
+    activities_summary = _format_activities_summary(activities)
+
+    # Step 4: Load user profile and recent messages
+    user_profile = db.get_user(user_id)
+    recent_msgs = db.get_recent_messages(user_id, limit=10)
+
+    # Step 5: Build prompt and call LLM
+    evening_prompt = _build_evening_prompt(
+        user_profile, activities, activities_summary, recent_msgs
+    )
+
+    message = call_llm(SYSTEM_PROMPT, evening_prompt, max_tokens=256)
+    logger.info("Generated evening check-in for user %s", user_id)
+    return message
