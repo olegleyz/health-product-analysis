@@ -42,3 +42,39 @@ Same as BUG-001 — the LLM is paraphrasing without reliable context. The extrac
 **Fix:**
 1. Include the user's exact message in the completion summary context so the LLM doesn't need to recall from memory
 2. Consider storing extracted times as structured data (e.g. `{"day": "wednesday", "time": "18:30", "activity": "trail running"}`)
+
+---
+
+## BUG-003: Strava sync crashes on SummaryActivity missing attributes
+
+**Status:** `FIXED`
+**Severity:** Medium
+**Found:** 2026-03-08
+**Component:** `src/sync/strava_sync.py`
+
+**Description:**
+Strava sync failed with `'SummaryActivity' object has no attribute 'calories'`.
+
+**Root cause:**
+`calories`, `description`, `average_heartrate`, `max_heartrate` are only on `DetailedActivity`, not `SummaryActivity` which is what `get_activities()` returns.
+
+**Fix:**
+Used `getattr()` with `None` default for those fields.
+
+---
+
+## BUG-004: Bot checks in on tomorrow's plans as if they're happening now
+
+**Status:** `FIXED`
+**Severity:** High
+**Found:** 2026-03-08
+**Component:** `src/brain.py`
+
+**Description:**
+After onboarding, the user discussed plans for tomorrow (morning workout, post-workout breakfast). When the user said "ok", the bot immediately started asking about the morning session and breakfast as if tomorrow had already arrived.
+
+**Root cause:**
+The reactive message handler in `brain.py` calls the LLM without any current date/time context. The LLM sees conversation about "tomorrow's plans" but has no way to know what "today" is, so it treats future plans as current and starts checking in on them immediately.
+
+**Fix:**
+Added current date/time (day of week, full date, time, UTC) to the system prompt in `handle_message()`. Added explicit instruction: "If the user discussed plans for tomorrow, do NOT check in on those plans until that day actually arrives."

@@ -88,8 +88,17 @@ def handle_message(user_id: str, text: str) -> str:
         daily_summaries=daily_summaries,
     )
 
-    # 3. Call LLM
-    system = SYSTEM_PROMPT + "\n\n" + context_block if context_block else SYSTEM_PROMPT
+    # 3. Call LLM — include current date/time so it knows "today" vs "tomorrow"
+    now = datetime.now(timezone.utc)
+    date_line = (
+        f"\n\nCurrent date/time: {now.strftime('%A, %B %d, %Y %I:%M %p')} UTC.\n"
+        "Use this to distinguish between past, present, and future events. "
+        "If the user discussed plans for tomorrow, do NOT check in on those "
+        "plans until that day actually arrives."
+    )
+    system = SYSTEM_PROMPT + date_line
+    if context_block:
+        system += "\n\n" + context_block
     response = call_llm(system, text)
 
     # 4. Extract data from user message (cost-optimized)
