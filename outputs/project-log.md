@@ -18,4 +18,10 @@
 - Note: Parallel agents caused working directory conflicts; resolved via manual merge cleanup
 - Starting Wave 4: T-006 (Brain), T-007 (Safety), T-012 (Sync Runner), T-016 (Governor)
 
+## 2026-03-08 — M2 Wave 1 Complete
+- Tasks done: T-014 (Morning Check-In), T-015 (Evening Check-In)
+- Tests passing: 159/159 (17 new proactive tests)
+- Fixed: SQLite UPDATE ORDER BY syntax, merged morning+evening test files
+- Starting T-018 (Proactive Nudges)
+
 ---
