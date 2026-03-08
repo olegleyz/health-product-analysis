@@ -253,3 +253,25 @@ def test_summary_is_idempotent(mock_llm, mock_llm_json):
     # The script checks _summary_exists before generating, so the second call
     # would be skipped. But let's verify the check works.
     assert _summary_exists(TEST_USER, TEST_DATE) is True
+
+
+@patch("src.summarizer.call_llm_json", return_value=STRUCTURED_RESPONSE)
+@patch("src.summarizer.call_llm", return_value=SUMMARY_TEXT)
+def test_summary_excludes_next_day_device_data(mock_llm, mock_llm_json):
+    """Device data from the following day is not included in the summary."""
+    _seed_device_data(TEST_USER, TEST_DATE)
+
+    # Add device data for the NEXT day
+    next_date = "2026-03-08"
+    db.save_device_data(
+        TEST_USER, "garmin", "activity",
+        {"type": "cycling", "duration_min": 60},
+        f"{next_date}T09:00:00+00:00",
+    )
+
+    generate_daily_summary(TEST_USER, TEST_DATE)
+
+    # Verify the LLM context does NOT include the next-day cycling activity
+    call_args = mock_llm.call_args
+    user_msg = call_args[0][1]
+    assert "cycling" not in user_msg.lower()

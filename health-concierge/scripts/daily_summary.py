@@ -10,10 +10,16 @@ import logging
 import sys
 from datetime import datetime, timezone
 
+sys.path.insert(0, ".")
+
 from config import settings
 from src import db
 from src.summarizer import generate_daily_summary, _summary_exists
 
+logging.basicConfig(
+    level=settings.log_level,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 

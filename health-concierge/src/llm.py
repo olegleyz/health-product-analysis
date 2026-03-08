@@ -96,15 +96,35 @@ def call_llm(
     raise last_error  # type: ignore[misc]
 
 
+def _strip_markdown_fences(text: str) -> str:
+    """Strip markdown code fences from LLM responses.
+
+    LLMs frequently wrap JSON in ```json ... ``` blocks. This strips
+    those fences so json.loads() can parse the content.
+    """
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        # Remove opening fence (```json or ```)
+        first_newline = stripped.find("\n")
+        if first_newline != -1:
+            stripped = stripped[first_newline + 1:]
+        # Remove closing fence
+        if stripped.rstrip().endswith("```"):
+            stripped = stripped.rstrip()[:-3].rstrip()
+    return stripped
+
+
 def call_llm_json(
     system_prompt: str, user_message: str, max_tokens: int = 1024
 ) -> dict:
     """Send a message to Claude and parse the response as JSON.
 
+    Strips markdown code fences if present before parsing.
     Raises ValueError if the response is not valid JSON.
     """
     text = call_llm(system_prompt, user_message, max_tokens)
+    cleaned = _strip_markdown_fences(text)
     try:
-        return json.loads(text)
+        return json.loads(cleaned)
     except json.JSONDecodeError as exc:
         raise ValueError(f"LLM response is not valid JSON: {text!r}") from exc
