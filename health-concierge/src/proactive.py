@@ -1,16 +1,19 @@
 """Proactive message generation.
 
-Generates outbound messages (morning check-ins, evening check-ins, nudges, etc.)
-using device data, daily summaries, and the LLM.
+Generates outbound messages (morning check-ins, evening check-ins,
+weekly reflections, nudges, etc.) using device data, daily summaries,
+and the LLM.
 """
 
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from src import db
 from src.governor import can_send
 from src.llm import call_llm
+from src.meals import get_meal_repertoire
 from src.prompts.persona import SYSTEM_PROMPT, format_context_block
 
 logger = logging.getLogger(__name__)
@@ -103,12 +106,14 @@ def _build_morning_prompt(
     device_summary: str | None,
     daily_summaries: list[dict],
     sleep_quality: str | None,
+    meal_repertoire: list[dict] | None = None,
 ) -> str:
     """Build the user-message prompt for the morning check-in LLM call."""
     context = format_context_block(
         user_profile=user_profile,
         device_data_summary=device_summary,
         daily_summaries=daily_summaries,
+        meal_repertoire=meal_repertoire,
     )
 
     instructions: list[str] = [
@@ -176,8 +181,12 @@ def generate_morning_checkin(user_id: str) -> str | None:
     )
     sleep_quality = _get_sleep_quality(sleep_records)
 
+    # Step 5b: Load meal repertoire for nutrition context
+    meal_repertoire = get_meal_repertoire(user_id)
+
     morning_prompt = _build_morning_prompt(
-        user_profile, device_summary, daily_summaries, sleep_quality
+        user_profile, device_summary, daily_summaries, sleep_quality,
+        meal_repertoire=meal_repertoire or None,
     )
 
     # Step 6: Call LLM
@@ -268,6 +277,7 @@ def _build_evening_prompt(
     activities: list[dict],
     activities_summary: str,
     recent_messages: list[dict],
+    meal_repertoire: list[dict] | None = None,
 ) -> str:
     """Build the user-message prompt for the evening check-in LLM call."""
     context = format_context_block(
@@ -277,6 +287,7 @@ def _build_evening_prompt(
             for m in reversed(recent_messages)
         ],
         device_data_summary=activities_summary or None,
+        meal_repertoire=meal_repertoire,
     )
 
     if activities:
@@ -337,11 +348,187 @@ def generate_evening_checkin(user_id: str) -> str | None:
     user_profile = db.get_user(user_id)
     recent_msgs = db.get_recent_messages(user_id, limit=10)
 
-    # Step 5: Build prompt and call LLM
+    # Step 5: Load meal repertoire for nutrition context
+    meal_repertoire = get_meal_repertoire(user_id)
+
+    # Step 6: Build prompt and call LLM
     evening_prompt = _build_evening_prompt(
-        user_profile, activities, activities_summary, recent_msgs
+        user_profile, activities, activities_summary, recent_msgs,
+        meal_repertoire=meal_repertoire or None,
     )
 
     message = call_llm(SYSTEM_PROMPT, evening_prompt, max_tokens=256)
     logger.info("Generated evening check-in for user %s", user_id)
+    return message
+
+
+# --- Weekly reflection ---
+
+
+def _week_ago_iso() -> str:
+    """Return the date 7 days ago as ISO date string (YYYY-MM-DD) in UTC."""
+    return (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+
+
+def _summarize_sleep_trend(daily_summaries: list[dict]) -> str | None:
+    """Extract a sleep trend description from daily summaries.
+
+    Looks at structured data for sleep_score or sleep_hours across days.
+    Returns a short description or None if insufficient data.
+    """
+    scores: list[float] = []
+    for s in daily_summaries:
+        structured = s.get("structured", {})
+        if isinstance(structured, dict):
+            score = structured.get("sleep_score") or structured.get("sleep_hours")
+            if score is not None:
+                scores.append(float(score))
+
+    if len(scores) < 2:
+        return None
+
+    # Summaries are newest-first; first_half = older, second_half = newer
+    first_half = scores[len(scores) // 2 :]
+    second_half = scores[: len(scores) // 2]
+
+    if first_half and second_half:
+        avg_first = sum(first_half) / len(first_half)
+        avg_second = sum(second_half) / len(second_half)
+        if avg_second > avg_first + 2:
+            return "improving"
+        elif avg_second < avg_first - 2:
+            return "declining"
+    return "stable"
+
+
+def _get_weight_change(
+    device_data: list[dict],
+) -> tuple[float | None, float | None]:
+    """Return (earliest_weight, latest_weight) from weight device data.
+
+    Returns (None, None) if no weight data found.
+    """
+    weights: list[tuple[str, float]] = []
+    for rec in device_data:
+        data = rec.get("data", {})
+        w = data.get("weight_kg") or data.get("weight")
+        if w is not None:
+            weights.append((rec.get("recorded_at", ""), float(w)))
+
+    if not weights:
+        return None, None
+
+    weights.sort(key=lambda x: x[0])
+    return weights[0][1], weights[-1][1]
+
+
+def _build_weekly_reflection_prompt(
+    user_profile: dict | None,
+    daily_summaries: list[dict],
+    workout_count: int,
+    sleep_trend: str | None,
+    weight_earliest: float | None,
+    weight_latest: float | None,
+) -> str:
+    """Build the prompt for the weekly reflection LLM call."""
+    context = format_context_block(
+        user_profile=user_profile,
+        daily_summaries=daily_summaries,
+    )
+
+    # Build a data block for the LLM
+    data_lines: list[str] = []
+    data_lines.append(f"Workouts this week: {workout_count}")
+
+    if sleep_trend:
+        data_lines.append(f"Sleep trend: {sleep_trend}")
+    else:
+        data_lines.append("Sleep trend: insufficient data")
+
+    if weight_earliest is not None and weight_latest is not None:
+        change = weight_latest - weight_earliest
+        sign = "+" if change > 0 else ""
+        data_lines.append(
+            f"Weight: {weight_earliest:.1f} kg -> {weight_latest:.1f} kg "
+            f"({sign}{change:.1f} kg)"
+        )
+    else:
+        data_lines.append("Weight: no data this week")
+
+    data_block = "\n".join(data_lines)
+
+    instructions = [
+        "Generate a weekly reflection message for Sunday evening.",
+        "This replaces the normal evening check-in.",
+        "Summarize the week briefly using the data provided below.",
+        f"Here is this week's data:\n{data_block}",
+        "Include the workout count in your message.",
+        "Mention the sleep trend if data is available.",
+        "Mention weight change if data is available.",
+        "Highlight one positive pattern you see in the daily summaries "
+        "(e.g. 'You trained consistently' or 'Your sleep improved').",
+        "End with one reflective question about next week "
+        "(e.g. 'What do you want to focus on next week?').",
+        "Keep it concise: 3-5 sentences maximum.",
+        "Follow all persona and safety rules.",
+    ]
+
+    prompt = ""
+    if context:
+        prompt += context + "\n\n"
+    prompt += "## Instructions\n" + "\n".join(f"- {i}" for i in instructions)
+
+    return prompt
+
+
+def generate_weekly_reflection(user_id: str) -> str | None:
+    """Generate a weekly reflection message for Sunday evening.
+
+    Summarizes the past 7 days: workouts, sleep trends, nutrition,
+    weight change. Highlights one positive pattern and asks a
+    reflective question.
+
+    Returns None if the governor blocks the message.
+    """
+    # Step 1: Check governor
+    if not can_send(user_id, "check_in"):
+        logger.info("Weekly reflection blocked by governor for user %s", user_id)
+        return None
+
+    # Step 2: Load user profile
+    user_profile = db.get_user(user_id)
+
+    # Step 3: Load 7 days of daily summaries
+    daily_summaries = db.get_daily_summaries(user_id, days=7)
+
+    # Step 4: Load device data for the past week
+    week_ago = _week_ago_iso()
+    activity_data: list[dict] = []
+    for source in ("garmin", "strava"):
+        records = db.get_device_data(
+            user_id, source=source, data_type="activity", since=week_ago
+        )
+        activity_data.extend(records)
+
+    weight_data = db.get_device_data(
+        user_id, data_type="weight", since=week_ago
+    )
+
+    # Step 5: Compute metrics
+    workout_count = len(activity_data)
+    sleep_trend = _summarize_sleep_trend(daily_summaries)
+    weight_earliest, weight_latest = _get_weight_change(weight_data)
+
+    # Step 6: Build prompt and call LLM
+    reflection_prompt = _build_weekly_reflection_prompt(
+        user_profile,
+        daily_summaries,
+        workout_count,
+        sleep_trend,
+        weight_earliest,
+        weight_latest,
+    )
+
+    message = call_llm(SYSTEM_PROMPT, reflection_prompt, max_tokens=512)
+    logger.info("Generated weekly reflection for user %s", user_id)
     return message
