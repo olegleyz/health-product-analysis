@@ -38,7 +38,7 @@
 
 ### T-001: Project Scaffolding
 
-**Status:** `READY`
+**Status:** `DONE`
 **Dependencies:** None
 **Context files:** `06-final-architecture.md`
 
@@ -1708,10 +1708,10 @@ Final acceptance. The MVP is considered complete when:
 
 | ID | Task | Milestone | Dependencies | Status |
 |---|---|---|---|---|
-| T-001 | Project Scaffolding | M1 | — | READY |
-| T-002 | SQLite Database Layer | M1 | T-001 | BLOCKED |
+| T-001 | Project Scaffolding | M1 | — | DONE |
+| T-002 | SQLite Database Layer | M1 | T-001 | IN_PROGRESS |
 | T-003 | Telegram Bot — Basic | M1 | T-001, T-002 | BLOCKED |
-| T-004 | Claude API Client | M1 | T-001 | BLOCKED |
+| T-004 | Claude API Client | M1 | T-001 | IN_PROGRESS |
 | T-005 | Persona Prompt Design | M1 | T-004 | BLOCKED |
 | T-006 | Concierge Brain — Reactive | M1 | T-002–T-005 | BLOCKED |
 | T-007 | Safety Filter | M1 | T-004, T-005 | BLOCKED |
