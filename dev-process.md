@@ -422,11 +422,13 @@ When assigned a task:
 2. Read the task description in `outputs/engineering-backlog.md`
 3. Read ALL context files listed in the task
 4. Read existing code in `health-concierge/` (if any) to understand current state
-5. Create branch: `feat/T-{number}-{short-name}`
+5. Create branch: `git checkout -b feat/T-{number}-{short-name}`
 6. Implement deliverables
 7. Write ALL required tests
 8. Run `pytest` — all tests must pass (not just yours)
-9. Report completion to PM with a brief summary
+9. Commit with descriptive message: `T-{number}: {what was done}`
+10. Push branch to GitHub: `git push -u origin feat/T-{number}-{short-name}`
+11. Report completion to PM with a brief summary
 
 ### For Human Stakeholders
 
