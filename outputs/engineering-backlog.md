@@ -1709,16 +1709,16 @@ Final acceptance. The MVP is considered complete when:
 | ID | Task | Milestone | Dependencies | Status |
 |---|---|---|---|---|
 | T-001 | Project Scaffolding | M1 | — | DONE |
-| T-002 | SQLite Database Layer | M1 | T-001 | IN_PROGRESS |
-| T-003 | Telegram Bot — Basic | M1 | T-001, T-002 | BLOCKED |
-| T-004 | Claude API Client | M1 | T-001 | IN_PROGRESS |
-| T-005 | Persona Prompt Design | M1 | T-004 | BLOCKED |
+| T-002 | SQLite Database Layer | M1 | T-001 | DONE |
+| T-003 | Telegram Bot — Basic | M1 | T-001, T-002 | IN_PROGRESS |
+| T-004 | Claude API Client | M1 | T-001 | DONE |
+| T-005 | Persona Prompt Design | M1 | T-004 | IN_PROGRESS |
 | T-006 | Concierge Brain — Reactive | M1 | T-002–T-005 | BLOCKED |
 | T-007 | Safety Filter | M1 | T-004, T-005 | BLOCKED |
-| T-008 | Oura Ring Data Sync | M1 | T-001, T-002 | BLOCKED |
-| T-009 | Garmin Connect Data Sync | M1 | T-001, T-002 | BLOCKED |
-| T-010 | Strava Data Sync | M1 | T-001, T-002 | BLOCKED |
-| T-011 | Renpho Data Sync | M1 | T-001, T-002 | BLOCKED |
+| T-008 | Oura Ring Data Sync | M1 | T-001, T-002 | IN_PROGRESS |
+| T-009 | Garmin Connect Data Sync | M1 | T-001, T-002 | IN_PROGRESS |
+| T-010 | Strava Data Sync | M1 | T-001, T-002 | IN_PROGRESS |
+| T-011 | Renpho Data Sync | M1 | T-001, T-002 | IN_PROGRESS |
 | T-012 | Unified Data Sync Runner | M1 | T-008–T-011 | BLOCKED |
 | T-013 | Onboarding Conversation | M1 | T-006 | BLOCKED |
 | A-M1 | Milestone 1 Acceptance | M1 | T-003–T-013 | BLOCKED |
