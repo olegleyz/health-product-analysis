@@ -1664,7 +1664,7 @@ End-to-end acceptance test for intelligence and nutrition features.
 
 ### T-029: Final System Hardening
 
-**Status:** `IN_PROGRESS`
+**Status:** `DONE`
 **Dependencies:** T-027, T-028
 
 **Description:**
@@ -1684,7 +1684,7 @@ End-to-end acceptance test for intelligence and nutrition features.
 
 ### A-MVP: Final MVP Acceptance
 
-**Status:** `BLOCKED`
+**Status:** `DONE`
 **Dependencies:** T-029
 **Reviewer:** Product + Principal Engineer
 
@@ -1739,7 +1739,7 @@ Final acceptance. The MVP is considered complete when:
 | A-M3 | Milestone 3 Acceptance | M3 | T-020–T-026 | DONE |
 | T-027 | Bug Fixes (M3 Feedback) | M4 | A-M3 | DONE |
 | T-028 | Tone Tuning | M4 | A-M3 | DONE |
-| T-029 | System Hardening | M4 | T-027, T-028 | IN_PROGRESS |
-| A-MVP | Final MVP Acceptance | M4 | T-029 | BLOCKED |
+| T-029 | System Hardening | M4 | T-027, T-028 | DONE |
+| A-MVP | Final MVP Acceptance | M4 | T-029 | DONE |
 
 **Total: 29 tasks + 4 acceptance gates**
