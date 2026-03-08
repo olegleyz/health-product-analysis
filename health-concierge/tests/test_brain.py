@@ -15,9 +15,9 @@ from src.db import (
 
 
 def _init(tmp_db_path: Path) -> None:
-    """Helper: initialise DB and create a test user."""
+    """Helper: initialise DB and create a test user with onboarding complete."""
     init_db(str(tmp_db_path))
-    upsert_user("u1", name="Alice")
+    upsert_user("u1", name="Alice", onboarding_complete=1)
 
 
 # --- handle_message ---

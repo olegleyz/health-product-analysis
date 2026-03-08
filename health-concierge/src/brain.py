@@ -52,11 +52,19 @@ def handle_message(user_id: str, text: str) -> str:
     """Process an incoming user message and return the concierge response.
 
     Steps:
+    0. Check onboarding status — route to onboarding if incomplete
     1. Load user profile, recent messages, device data, daily summaries
     2. Format context and call LLM for a response
     3. Extract health data from the message (cost-optimized)
     4. Save messages and update engagement state
     """
+    # 0. Check onboarding status
+    from src.onboarding import get_onboarding_step, handle_onboarding_message
+
+    step = get_onboarding_step(user_id)
+    if step is not None:
+        return handle_onboarding_message(user_id, text)
+
     # 1. Load context data
     user_profile = get_user(user_id)
     recent_messages = get_recent_messages(user_id, limit=20)
