@@ -94,6 +94,18 @@ def start_bot() -> None:
     app.run_polling()
 
 
+def main() -> None:
+    """Wire up the brain and start the bot."""
+    from src.brain import handle_message
+
+    logging.basicConfig(
+        level=settings.log_level,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+    )
+    set_message_handler(handle_message)
+    start_bot()
+
+
 async def send_message(user_id: str, text: str) -> None:
     """Send a proactive message to a user.
 
@@ -109,3 +121,7 @@ async def send_message(user_id: str, text: str) -> None:
 
     save_message(user_id, "outbound", text, trigger_type="proactive")
     logger.info("Sent proactive message to user %s: %s", user_id, text[:50])
+
+
+if __name__ == "__main__":
+    main()
