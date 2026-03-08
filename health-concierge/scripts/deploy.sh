@@ -19,7 +19,7 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/olegleyz/health-product-analysis.git"
-PROJECT_DIR="$HOME/health-concierge"
+PROJECT_DIR="$HOME/health-product-analysis"
 APP_DIR="$PROJECT_DIR/health-concierge"
 
 echo "=== Health Concierge VPS Deploy ==="
