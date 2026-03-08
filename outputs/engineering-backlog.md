@@ -1727,12 +1727,12 @@ Final acceptance. The MVP is considered complete when:
 | T-016 | Frequency Governor | M2 | T-002 | DONE |
 | T-017 | Engagement State Machine | M2 | T-016 | DONE |
 | T-018 | Proactive Nudges | M2 | T-014–T-016 | DONE |
-| T-019 | Cron Configuration | M2 | T-014, T-015, T-018, T-012 | IN_PROGRESS |
-| A-M2 | Milestone 2 Acceptance | M2 | T-014–T-019 | BLOCKED |
-| T-020 | Daily Summary Generation | M3 | A-M2 | BLOCKED |
+| T-019 | Cron Configuration | M2 | T-014, T-015, T-018, T-012 | DONE |
+| A-M2 | Milestone 2 Acceptance | M2 | T-014–T-019 | DONE |
+| T-020 | Daily Summary Generation | M3 | A-M2 | IN_PROGRESS |
 | T-021 | Enhanced Prompt Builder | M3 | T-020 | BLOCKED |
 | T-022 | Conversation Compression | M3 | T-020 | BLOCKED |
-| T-023 | Meal Extraction & Memory | M3 | A-M2 | BLOCKED |
+| T-023 | Meal Extraction & Memory | M3 | A-M2 | IN_PROGRESS |
 | T-024 | Nutrition Recommendations | M3 | T-023, T-021 | BLOCKED |
 | T-025 | Weekly Reflection | M3 | T-020, T-021 | BLOCKED |
 | T-026 | Update Cron Config | M3 | T-020, T-025, T-019 | BLOCKED |

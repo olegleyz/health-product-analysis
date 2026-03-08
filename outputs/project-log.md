@@ -18,6 +18,13 @@
 - Note: Parallel agents caused working directory conflicts; resolved via manual merge cleanup
 - Starting Wave 4: T-006 (Brain), T-007 (Safety), T-012 (Sync Runner), T-016 (Governor)
 
+## 2026-03-08 — Milestone 2 Complete
+- All M2 tasks done: T-014, T-015, T-018, T-019 (plus T-016, T-017 pulled from M1)
+- Tests passing: 169/169
+- Demo report: outputs/demo-M2.md
+- Acceptance: PASS
+- Starting Milestone 3: T-020 (Daily Summary), T-023 (Meal Extraction)
+
 ## 2026-03-08 — M2 Wave 1 Complete
 - Tasks done: T-014 (Morning Check-In), T-015 (Evening Check-In)
 - Tests passing: 159/159 (17 new proactive tests)
