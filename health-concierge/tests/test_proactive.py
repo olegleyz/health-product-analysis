@@ -9,9 +9,10 @@ from src import db
 from src.proactive import (
     generate_morning_checkin,
     generate_evening_checkin,
-    _build_evening_prompt,
-    _build_morning_prompt,
 )
+
+
+USER_ID = "u1"
 
 
 @pytest.fixture(autouse=True)
@@ -20,27 +21,71 @@ def setup_db(tmp_db_path, test_settings, monkeypatch):
     monkeypatch.setattr("src.db.settings", test_settings)
     monkeypatch.setattr("config.settings", test_settings)
     db.init_db(str(tmp_db_path))
-    db.upsert_user("u1", name="Test", timezone="Asia/Jerusalem")
+    db.upsert_user(USER_ID, name="Test User", timezone="Asia/Jerusalem")
     yield
 
 
 def _utc(year=2026, month=3, day=7, hour=10, minute=0) -> datetime:
-    """Helper: build a UTC datetime."""
     return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
 
 
+def _mock_governor_allow():
+    return patch("src.proactive.can_send", return_value=True)
+
+
+def _mock_governor_block():
+    return patch("src.proactive.can_send", return_value=False)
+
+
 def _mock_now(dt: datetime):
-    """Return a patcher that mocks _now_utc in the governor to return dt."""
     return patch("src.governor._now_utc", return_value=dt)
 
 
 def _mock_today(date_str: str):
-    """Return a patcher that mocks _today_iso in proactive to return date_str."""
     return patch("src.proactive._today_iso", return_value=date_str)
 
 
+def _insert_sleep_data(user_id: str, score: int = 85, duration: float = 7.5):
+    """Insert oura sleep data for yesterday."""
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    db.save_device_data(
+        user_id,
+        source="oura",
+        data_type="sleep",
+        data={
+            "score": score,
+            "duration_hours": duration,
+            "quality": "good" if score >= 75 else ("fair" if score >= 60 else "poor"),
+            "deep_sleep_hours": 1.5,
+            "rem_sleep_hours": 2.0,
+        },
+        recorded_at=f"{yesterday}T06:00:00+00:00",
+    )
+
+
+def _insert_readiness_data(user_id: str, score: int = 80):
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    db.save_device_data(
+        user_id,
+        source="oura",
+        data_type="readiness",
+        data={"score": score},
+        recorded_at=f"{yesterday}T06:00:00+00:00",
+    )
+
+
+def _insert_weight_data(user_id: str, weight_kg: float = 80.5):
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    db.save_device_data(
+        user_id,
+        source="renpho",
+        data_type="weight",
+        data={"weight_kg": weight_kg},
+        recorded_at=f"{yesterday}T07:00:00+00:00",
+    )
+
+
 def _insert_activity(user_id: str, source: str, name: str, duration: int, recorded_at: str):
-    """Insert an activity record into device_data."""
     db.save_device_data(
         user_id,
         source=source,
@@ -51,11 +96,9 @@ def _insert_activity(user_id: str, source: str, name: str, duration: int, record
 
 
 def _insert_morning_checkin(user_id: str, created_at: str):
-    """Insert a morning check-in outbound message."""
     db.save_message(
         user_id, "outbound", "Good morning!", trigger_type="morning_check_in"
     )
-    # Overwrite the created_at to the desired time
     with db.get_connection() as conn:
         conn.execute(
             "UPDATE messages SET created_at = ? "
@@ -67,7 +110,6 @@ def _insert_morning_checkin(user_id: str, created_at: str):
 
 
 def _insert_user_reply(user_id: str, created_at: str):
-    """Insert an inbound message from the user."""
     db.save_message(user_id, "inbound", "Hey there!")
     with db.get_connection() as conn:
         conn.execute(
@@ -79,50 +121,156 @@ def _insert_user_reply(user_id: str, created_at: str):
         )
 
 
-# --- Evening check-in: activity references ---
+# ===== Morning check-in tests =====
+
+
+class TestMorningCheckinIncludesSleepData:
+    def test_prompt_mentions_sleep_when_data_exists(self):
+        _insert_sleep_data(USER_ID, score=85, duration=7.5)
+
+        with _mock_governor_allow(), \
+             patch("src.proactive.call_llm", return_value="Morning!") as mock_llm:
+            result = generate_morning_checkin(USER_ID)
+
+        assert result == "Morning!"
+        prompt_arg = mock_llm.call_args[0][1]
+        assert "Sleep" in prompt_arg or "sleep" in prompt_arg.lower()
+        assert "7.5" in prompt_arg
+        assert "85" in prompt_arg
+
+
+class TestMorningCheckinAdjustsForPoorSleep:
+    def test_poor_sleep_triggers_empathetic_tone(self):
+        _insert_sleep_data(USER_ID, score=45, duration=4.5)
+
+        with _mock_governor_allow(), \
+             patch("src.proactive.call_llm", return_value="Rough night.") as mock_llm:
+            generate_morning_checkin(USER_ID)
+
+        prompt_arg = mock_llm.call_args[0][1]
+        assert "empathetic" in prompt_arg.lower() or "gentle" in prompt_arg.lower()
+        assert "poorly" in prompt_arg.lower() or "rough" in prompt_arg.lower()
+
+    def test_good_sleep_triggers_energized_tone(self):
+        _insert_sleep_data(USER_ID, score=90, duration=8.0)
+
+        with _mock_governor_allow(), \
+             patch("src.proactive.call_llm", return_value="Great morning!") as mock_llm:
+            generate_morning_checkin(USER_ID)
+
+        prompt_arg = mock_llm.call_args[0][1]
+        assert "energized" in prompt_arg.lower() or "upbeat" in prompt_arg.lower()
+
+
+class TestMorningCheckinWithoutDeviceData:
+    def test_generates_message_without_any_device_data(self):
+        with _mock_governor_allow(), \
+             patch("src.proactive.call_llm", return_value="How'd you sleep?") as mock_llm:
+            result = generate_morning_checkin(USER_ID)
+
+        assert result == "How'd you sleep?"
+        prompt_arg = mock_llm.call_args[0][1]
+        assert "ask" in prompt_arg.lower() and "sleep" in prompt_arg.lower()
+
+
+class TestMorningCheckinSkipsQuietModeUser:
+    def test_returns_none_when_governor_blocks(self):
+        with _mock_governor_block():
+            result = generate_morning_checkin(USER_ID)
+        assert result is None
+
+
+class TestMorningCheckinSkipsPausedModeUser:
+    def test_returns_none_when_paused(self):
+        with _mock_governor_block():
+            result = generate_morning_checkin(USER_ID)
+        assert result is None
+
+
+class TestMorningCheckinWithMultipleDataSources:
+    def test_includes_readiness_and_weight(self):
+        _insert_sleep_data(USER_ID, score=80)
+        _insert_readiness_data(USER_ID, score=75)
+        _insert_weight_data(USER_ID, weight_kg=81.2)
+
+        with _mock_governor_allow(), \
+             patch("src.proactive.call_llm", return_value="Morning!") as mock_llm:
+            generate_morning_checkin(USER_ID)
+
+        prompt_arg = mock_llm.call_args[0][1]
+        assert "Readiness" in prompt_arg
+        assert "75" in prompt_arg
+        assert "81.2" in prompt_arg
+
+    def test_prompt_asks_about_training_plans(self):
+        with _mock_governor_allow(), \
+             patch("src.proactive.call_llm", return_value="Morning!") as mock_llm:
+            generate_morning_checkin(USER_ID)
+
+        prompt_arg = mock_llm.call_args[0][1]
+        assert "plan" in prompt_arg.lower() or "train" in prompt_arg.lower()
+
+    def test_uses_persona_system_prompt(self):
+        from src.prompts.persona import SYSTEM_PROMPT
+
+        with _mock_governor_allow(), \
+             patch("src.proactive.call_llm", return_value="Morning!") as mock_llm:
+            generate_morning_checkin(USER_ID)
+
+        system_arg = mock_llm.call_args[0][0]
+        assert system_arg == SYSTEM_PROMPT
+
+    def test_includes_daily_summaries_in_context(self):
+        db.save_daily_summary(
+            USER_ID, "2026-03-06", "Ran 5k, slept okay", {"steps": 8000}
+        )
+
+        with _mock_governor_allow(), \
+             patch("src.proactive.call_llm", return_value="Morning!") as mock_llm:
+            generate_morning_checkin(USER_ID)
+
+        prompt_arg = mock_llm.call_args[0][1]
+        assert "Ran 5k" in prompt_arg
+
+
+# ===== Evening check-in tests =====
 
 
 def test_evening_checkin_references_todays_activity():
-    """Insert garmin activity for today, verify LLM prompt mentions it."""
     today = "2026-03-07"
-    recorded_at = f"{today}T14:00:00+00:00"
-    _insert_activity("u1", "garmin", "Morning Run", 45, recorded_at)
+    _insert_activity(USER_ID, "garmin", "Morning Run", 45, f"{today}T14:00:00+00:00")
 
     with _mock_now(_utc(hour=18)), \
          _mock_today(today), \
          patch("src.proactive.call_llm", return_value="Nice run today!") as mock_llm:
-        result = generate_evening_checkin("u1")
+        result = generate_evening_checkin(USER_ID)
 
     assert result is not None
-    # Check the prompt passed to call_llm references the activity
     prompt_arg = mock_llm.call_args[0][1]
     assert "Morning Run" in prompt_arg
     assert "45 min" in prompt_arg
 
 
 def test_evening_checkin_acknowledges_workout():
-    """Verify prompt includes workout acknowledgement instruction when activity exists."""
     today = "2026-03-07"
-    recorded_at = f"{today}T10:00:00+00:00"
-    _insert_activity("u1", "strava", "Cycling", 60, recorded_at)
+    _insert_activity(USER_ID, "strava", "Cycling", 60, f"{today}T10:00:00+00:00")
 
     with _mock_now(_utc(hour=18)), \
          _mock_today(today), \
          patch("src.proactive.call_llm", return_value="Great ride!") as mock_llm:
-        generate_evening_checkin("u1")
+        generate_evening_checkin(USER_ID)
 
     prompt_arg = mock_llm.call_args[0][1]
     assert "trained today" in prompt_arg.lower() or "acknowledge the workout" in prompt_arg.lower()
 
 
 def test_evening_checkin_neutral_on_rest_day():
-    """No activities in DB, verify prompt says rest day is fine."""
     today = "2026-03-07"
 
     with _mock_now(_utc(hour=18)), \
          _mock_today(today), \
          patch("src.proactive.call_llm", return_value="How was your day?") as mock_llm:
-        result = generate_evening_checkin("u1")
+        result = generate_evening_checkin(USER_ID)
 
     assert result is not None
     prompt_arg = mock_llm.call_args[0][1]
@@ -130,68 +278,57 @@ def test_evening_checkin_neutral_on_rest_day():
     assert "not be judgmental" in prompt_arg.lower() or "perfectly fine" in prompt_arg.lower()
 
 
-# --- Evening check-in: skip logic ---
-
-
 def test_evening_checkin_skips_if_morning_unanswered():
-    """Morning check-in sent today but user hasn't replied -> returns None."""
     today = "2026-03-07"
-    morning_ts = f"{today}T07:00:00+00:00"
-    _insert_morning_checkin("u1", morning_ts)
+    _insert_morning_checkin(USER_ID, f"{today}T07:00:00+00:00")
 
     with _mock_now(_utc(hour=18)), \
          _mock_today(today), \
          patch("src.proactive.call_llm") as mock_llm:
-        result = generate_evening_checkin("u1")
+        result = generate_evening_checkin(USER_ID)
 
     assert result is None
     mock_llm.assert_not_called()
 
 
 def test_evening_checkin_sends_if_morning_answered():
-    """Morning check-in sent today and user replied -> should generate."""
     today = "2026-03-07"
-    morning_ts = f"{today}T07:00:00+00:00"
-    reply_ts = f"{today}T08:00:00+00:00"
-    _insert_morning_checkin("u1", morning_ts)
-    _insert_user_reply("u1", reply_ts)
+    _insert_morning_checkin(USER_ID, f"{today}T07:00:00+00:00")
+    _insert_user_reply(USER_ID, f"{today}T08:00:00+00:00")
 
     with _mock_now(_utc(hour=18)), \
          _mock_today(today), \
          patch("src.proactive.call_llm", return_value="Evening!"):
-        result = generate_evening_checkin("u1")
+        result = generate_evening_checkin(USER_ID)
 
     assert result is not None
 
 
 def test_evening_checkin_skips_quiet_mode():
-    """Mock can_send returning False -> returns None."""
     with patch("src.proactive.can_send", return_value=False), \
          patch("src.proactive.call_llm") as mock_llm:
-        result = generate_evening_checkin("u1")
+        result = generate_evening_checkin(USER_ID)
 
     assert result is None
     mock_llm.assert_not_called()
 
 
 def test_evening_checkin_updates_engagement_state():
-    """Verify that the evening script pattern records the send properly."""
     today = "2026-03-07"
 
     with _mock_now(_utc(hour=18)), \
          _mock_today(today), \
          patch("src.proactive.call_llm", return_value="Good evening!"):
-        msg = generate_evening_checkin("u1")
+        msg = generate_evening_checkin(USER_ID)
 
     assert msg is not None
 
-    # Simulate what the script does after getting the message
     from src.governor import record_send
     with _mock_now(_utc(hour=18)):
-        db.save_message("u1", "outbound", msg, trigger_type="evening_check_in")
-        record_send("u1")
+        db.save_message(USER_ID, "outbound", msg, trigger_type="evening_check_in")
+        record_send(USER_ID)
 
-    state = db.get_engagement_state("u1")
+    state = db.get_engagement_state(USER_ID)
     assert state["daily_outbound_count"] == 1
     assert state["unanswered_count"] == 1
     assert state["last_outbound_message"] is not None
