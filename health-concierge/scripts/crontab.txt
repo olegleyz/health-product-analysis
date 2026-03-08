@@ -10,8 +10,8 @@ PROJECT_DIR=/path/to/health-concierge
 # Nightly database backup — 2:00 AM
 0 2 * * * cd $PROJECT_DIR && .venv/bin/python scripts/backup_db.py >> logs/backup.log 2>&1
 
-# Data sync — every 4 hours (with error alerting)
-0 */4 * * * cd $PROJECT_DIR && .venv/bin/python scripts/error_alert.py .venv/bin/python scripts/sync_all.py >> logs/sync.log 2>&1
+# Data sync — every hour (with error alerting)
+0 * * * * cd $PROJECT_DIR && .venv/bin/python scripts/error_alert.py .venv/bin/python scripts/sync_all.py >> logs/sync.log 2>&1
 
 # Morning check-in — 8:00 AM local (adjust for your timezone)
 0 8 * * * cd $PROJECT_DIR && .venv/bin/python scripts/error_alert.py .venv/bin/python scripts/morning_checkin.py >> logs/proactive.log 2>&1
