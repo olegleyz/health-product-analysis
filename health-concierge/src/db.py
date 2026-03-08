@@ -3,3 +3,379 @@
 Schema creation and thin Python access functions (no ORM).
 Wraps raw parameterized SQL queries.
 """
+
+import json
+import logging
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+# Module-level db path, set by init_db()
+_db_path: str | None = None
+
+
+def _now() -> str:
+    """Return current UTC time as ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def init_db(db_path: str | None = None) -> None:
+    """Create all tables if they don't exist.
+
+    Sets the module-level _db_path so subsequent calls can find the DB.
+    """
+    global _db_path
+    _db_path = db_path or settings.db_path
+
+    # Ensure parent directory exists
+    Path(_db_path).parent.mkdir(parents=True, exist_ok=True)
+
+    with sqlite3.connect(_db_path) as conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                timezone TEXT DEFAULT 'Asia/Jerusalem',
+                goals JSON,
+                preferences JSON,
+                onboarding_complete INTEGER DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                direction TEXT,
+                content TEXT,
+                extracted_data JSON,
+                trigger_type TEXT,
+                created_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS daily_summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                date TEXT,
+                summary TEXT,
+                structured JSON,
+                created_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS engagement_state (
+                user_id TEXT PRIMARY KEY,
+                mode TEXT DEFAULT 'active',
+                last_user_message TEXT,
+                last_outbound_message TEXT,
+                unanswered_count INTEGER DEFAULT 0,
+                daily_outbound_count INTEGER DEFAULT 0,
+                daily_outbound_reset_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS device_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                source TEXT,
+                data_type TEXT,
+                data JSON,
+                recorded_at TEXT,
+                synced_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS meals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                name TEXT,
+                description TEXT,
+                tags JSON,
+                times_mentioned INTEGER DEFAULT 1,
+                last_mentioned TEXT,
+                notes TEXT
+            );
+        """)
+    logger.info("Database initialized at %s", _db_path)
+
+
+def get_connection(db_path: str | None = None) -> sqlite3.Connection:
+    """Return a sqlite3 connection with row_factory set to sqlite3.Row."""
+    path = db_path or _db_path or settings.db_path
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _row_to_dict(row: sqlite3.Row | None) -> dict | None:
+    """Convert a sqlite3.Row to a plain dict, or return None."""
+    if row is None:
+        return None
+    return dict(row)
+
+
+def _rows_to_dicts(rows: list) -> list[dict]:
+    """Convert a list of sqlite3.Row to a list of dicts."""
+    return [dict(r) for r in rows]
+
+
+# --- Users ---
+
+def get_user(user_id: str) -> dict | None:
+    """Fetch a user by ID. Returns None if not found."""
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    for field in ("goals", "preferences"):
+        if d.get(field):
+            d[field] = json.loads(d[field])
+    return d
+
+
+def upsert_user(user_id: str, **fields) -> None:
+    """Create a new user or update an existing one."""
+    now = _now()
+    existing = get_user(user_id)
+
+    # Serialize JSON fields
+    for field in ("goals", "preferences"):
+        if field in fields and fields[field] is not None:
+            fields[field] = json.dumps(fields[field])
+
+    if existing is None:
+        fields.setdefault("created_at", now)
+        fields["updated_at"] = now
+        fields["id"] = user_id
+        cols = ", ".join(fields.keys())
+        placeholders = ", ".join("?" for _ in fields)
+        with get_connection() as conn:
+            conn.execute(
+                f"INSERT INTO users ({cols}) VALUES ({placeholders})",
+                tuple(fields.values()),
+            )
+    else:
+        fields["updated_at"] = now
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        with get_connection() as conn:
+            conn.execute(
+                f"UPDATE users SET {set_clause} WHERE id = ?",
+                (*fields.values(), user_id),
+            )
+
+
+# --- Messages ---
+
+def save_message(
+    user_id: str,
+    direction: str,
+    content: str,
+    extracted_data: dict | None = None,
+    trigger_type: str | None = None,
+) -> None:
+    """Insert a message record."""
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO messages (user_id, direction, content, extracted_data, trigger_type, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                user_id,
+                direction,
+                content,
+                json.dumps(extracted_data) if extracted_data else None,
+                trigger_type,
+                _now(),
+            ),
+        )
+
+
+def get_recent_messages(user_id: str, limit: int = 20) -> list[dict]:
+    """Return the most recent messages for a user, newest first."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM messages WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
+    result = _rows_to_dicts(rows)
+    for msg in result:
+        if msg.get("extracted_data"):
+            msg["extracted_data"] = json.loads(msg["extracted_data"])
+    return result
+
+
+# --- Engagement State ---
+
+def get_engagement_state(user_id: str) -> dict:
+    """Return engagement state for a user, with defaults if no record exists."""
+    defaults = {
+        "user_id": user_id,
+        "mode": "active",
+        "last_user_message": None,
+        "last_outbound_message": None,
+        "unanswered_count": 0,
+        "daily_outbound_count": 0,
+        "daily_outbound_reset_at": None,
+    }
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM engagement_state WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    if row is None:
+        return defaults
+    return dict(row)
+
+
+def update_engagement_state(user_id: str, **fields) -> None:
+    """Update engagement state for a user, creating the row if needed."""
+    with get_connection() as conn:
+        existing = conn.execute(
+            "SELECT user_id FROM engagement_state WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        if existing is None:
+            fields["user_id"] = user_id
+            cols = ", ".join(fields.keys())
+            placeholders = ", ".join("?" for _ in fields)
+            conn.execute(
+                f"INSERT INTO engagement_state ({cols}) VALUES ({placeholders})",
+                tuple(fields.values()),
+            )
+        else:
+            set_clause = ", ".join(f"{k} = ?" for k in fields)
+            conn.execute(
+                f"UPDATE engagement_state SET {set_clause} WHERE user_id = ?",
+                (*fields.values(), user_id),
+            )
+
+
+# --- Device Data ---
+
+def save_device_data(
+    user_id: str, source: str, data_type: str, data: dict, recorded_at: str
+) -> None:
+    """Insert a device data record."""
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO device_data (user_id, source, data_type, data, recorded_at, synced_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, source, data_type, json.dumps(data), recorded_at, _now()),
+        )
+
+
+def get_device_data(
+    user_id: str,
+    source: str | None = None,
+    data_type: str | None = None,
+    since: str | None = None,
+) -> list[dict]:
+    """Return device data records, optionally filtered by source, data_type, or since date."""
+    query = "SELECT * FROM device_data WHERE user_id = ?"
+    params: list = [user_id]
+
+    if source is not None:
+        query += " AND source = ?"
+        params.append(source)
+    if data_type is not None:
+        query += " AND data_type = ?"
+        params.append(data_type)
+    if since is not None:
+        query += " AND recorded_at >= ?"
+        params.append(since)
+
+    query += " ORDER BY recorded_at DESC"
+
+    with get_connection() as conn:
+        rows = conn.execute(query, params).fetchall()
+    result = _rows_to_dicts(rows)
+    for rec in result:
+        if rec.get("data"):
+            rec["data"] = json.loads(rec["data"])
+    return result
+
+
+# --- Daily Summaries ---
+
+def save_daily_summary(
+    user_id: str, date: str, summary: str, structured: dict
+) -> None:
+    """Insert a daily summary record."""
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO daily_summaries (user_id, date, summary, structured, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, date, summary, json.dumps(structured), _now()),
+        )
+
+
+def get_daily_summaries(user_id: str, days: int = 7) -> list[dict]:
+    """Return the most recent daily summaries for a user."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM daily_summaries WHERE user_id = ? ORDER BY date DESC LIMIT ?",
+            (user_id, days),
+        ).fetchall()
+    result = _rows_to_dicts(rows)
+    for rec in result:
+        if rec.get("structured"):
+            rec["structured"] = json.loads(rec["structured"])
+    return result
+
+
+# --- Meals ---
+
+def upsert_meal(
+    user_id: str,
+    name: str,
+    description: str | None = None,
+    tags: list | None = None,
+    notes: str | None = None,
+) -> None:
+    """Create a new meal or increment times_mentioned if it already exists (matched by user_id + name)."""
+    now = _now()
+    with get_connection() as conn:
+        existing = conn.execute(
+            "SELECT id, times_mentioned FROM meals WHERE user_id = ? AND name = ?",
+            (user_id, name),
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                "INSERT INTO meals (user_id, name, description, tags, times_mentioned, last_mentioned, notes) "
+                "VALUES (?, ?, ?, ?, 1, ?, ?)",
+                (
+                    user_id,
+                    name,
+                    description,
+                    json.dumps(tags) if tags else None,
+                    now,
+                    notes,
+                ),
+            )
+        else:
+            new_count = existing["times_mentioned"] + 1
+            update_fields = {"times_mentioned": new_count, "last_mentioned": now}
+            if description is not None:
+                update_fields["description"] = description
+            if tags is not None:
+                update_fields["tags"] = json.dumps(tags)
+            if notes is not None:
+                update_fields["notes"] = notes
+            set_clause = ", ".join(f"{k} = ?" for k in update_fields)
+            conn.execute(
+                f"UPDATE meals SET {set_clause} WHERE id = ?",
+                (*update_fields.values(), existing["id"]),
+            )
+
+
+def get_meals(user_id: str) -> list[dict]:
+    """Return all meals for a user."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM meals WHERE user_id = ? ORDER BY last_mentioned DESC",
+            (user_id,),
+        ).fetchall()
+    result = _rows_to_dicts(rows)
+    for rec in result:
+        if rec.get("tags"):
+            rec["tags"] = json.loads(rec["tags"])
+    return result
