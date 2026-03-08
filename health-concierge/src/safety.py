@@ -63,6 +63,13 @@ _RE_GUILT = re.compile(
     r"\byou\s+said\s+you\s+would\b|\byou\s+missed\b|\byou\s+didn'?t\b",
     re.IGNORECASE,
 )
+_RE_DIET_CULTURE = re.compile(
+    r"\bcheat\s+meal\b|\bclean\s+eating\b|\bno\s+excuses\b|\bgains\b",
+    re.IGNORECASE,
+)
+_RE_AT_LEAST = re.compile(
+    r"\bat\s+least\s+(you|it)\b", re.IGNORECASE
+)
 
 # ---------------------------------------------------------------------------
 # Harmful content patterns (BLOCK)
@@ -198,6 +205,12 @@ def check_message(message: str, context: dict | None = None) -> SafetyResult:
 
     if _RE_GUILT.search(message):
         warns.append("Guilt-tripping language detected")
+
+    if _RE_DIET_CULTURE.search(message):
+        warns.append("Diet-culture language detected (cheat meal, clean eating, no excuses, gains)")
+
+    if _RE_AT_LEAST.search(message):
+        warns.append("Minimizing with 'at least' (dismisses user's experience)")
 
     if warns:
         return SafetyResult(

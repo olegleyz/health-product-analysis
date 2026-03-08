@@ -108,3 +108,81 @@ class TestEdgeCases:
         """'you have to' is not a diagnosis."""
         result = check_message("You have to try this recipe")
         assert result.status != "block" or "diagnosis" not in result.reason
+
+
+class TestDietCultureLanguage:
+    """T-028: Detect diet-culture language banned in persona prompt."""
+
+    def test_warns_cheat_meal(self):
+        result = check_message("That pizza was your cheat meal for the week")
+        assert result.status == "warn"
+        assert "diet-culture" in result.reason.lower()
+
+    def test_warns_clean_eating(self):
+        result = check_message("Try to focus on clean eating this week")
+        assert result.status == "warn"
+
+    def test_warns_no_excuses(self):
+        result = check_message("No excuses — get that workout in")
+        assert result.status == "warn"
+
+    def test_warns_gains(self):
+        result = check_message("Time to make some gains today")
+        assert result.status == "warn"
+
+    def test_normal_meal_talk_is_fine(self):
+        result = check_message("That chicken salad sounds like a solid meal")
+        assert result.status == "pass"
+
+
+class TestMinimizingLanguage:
+    """T-028: Detect 'at least' minimizing language."""
+
+    def test_warns_at_least_you(self):
+        result = check_message("At least you got some sleep last night")
+        assert result.status == "warn"
+        assert "at least" in result.reason.lower()
+
+    def test_warns_at_least_it(self):
+        result = check_message("At least it wasn't a complete rest day")
+        assert result.status == "warn"
+
+    def test_at_least_in_other_context_is_fine(self):
+        """'at least 3 workouts' is quantitative, not minimizing."""
+        result = check_message("Aim for at least 3 workouts this week")
+        assert result.status == "pass"
+
+
+class TestFalsePositiveAvoidance:
+    """T-028: Ensure safe messages are not incorrectly flagged."""
+
+    def test_take_it_easy_is_safe(self):
+        result = check_message("Take it easy today if you're tired")
+        assert result.status == "pass"
+
+    def test_take_your_time_is_safe(self):
+        result = check_message("Take your time getting back into it")
+        assert result.status == "pass"
+
+    def test_take_a_day_off_is_safe(self):
+        result = check_message("Take a day off if your body needs it")
+        assert result.status == "pass"
+
+    def test_take_some_time_is_safe(self):
+        result = check_message("Take some time for yourself")
+        assert result.status == "pass"
+
+    def test_that_sounds_like_a_plan_is_safe(self):
+        result = check_message("That sounds like a plan")
+        assert result.status == "pass"
+
+    def test_that_sounds_like_a_good_idea_is_safe(self):
+        result = check_message("That sounds like a good idea")
+        assert result.status == "pass"
+
+    def test_referral_with_you_have_is_safe(self):
+        """Professional referral should bypass 'you have' diagnosis check."""
+        result = check_message(
+            "If you have persistent pain, talk to your doctor about it"
+        )
+        assert result.status == "pass"
