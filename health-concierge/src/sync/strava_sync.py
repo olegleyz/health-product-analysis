@@ -130,10 +130,10 @@ def sync_strava(user_id: str) -> dict:
                 if activity.total_elevation_gain
                 else None
             ),
-            "average_heartrate": activity.average_heartrate,
-            "max_heartrate": activity.max_heartrate,
-            "calories": activity.calories,
-            "description": activity.description,
+            "average_heartrate": getattr(activity, "average_heartrate", None),
+            "max_heartrate": getattr(activity, "max_heartrate", None),
+            "calories": getattr(activity, "calories", None),
+            "description": getattr(activity, "description", None),
         }
 
         save_device_data(
