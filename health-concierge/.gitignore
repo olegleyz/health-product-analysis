@@ -5,3 +5,5 @@ __pycache__/
 .env
 *.db
 .pytest_cache/
+logs/*.log
+logs/crontab.backup
