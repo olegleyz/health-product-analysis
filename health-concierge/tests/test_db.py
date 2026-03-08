@@ -1,5 +1,6 @@
 """Tests for the SQLite database layer."""
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.db import (
@@ -9,6 +10,7 @@ from src.db import (
     upsert_user,
     save_message,
     get_recent_messages,
+    archive_old_messages,
     get_engagement_state,
     update_engagement_state,
     save_device_data,
@@ -210,3 +212,66 @@ def test_json_fields_roundtrip(tmp_db_path: Path) -> None:
     meals = get_meals("u1")
     salad = [m for m in meals if m["name"] == "Salad"][0]
     assert salad["tags"] == tags
+
+
+# --- Conversation compression (T-022) ---
+
+def _insert_message_at(user_id: str, content: str, created_at: str) -> None:
+    """Helper: insert a message with a specific created_at timestamp."""
+    import json
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO messages (user_id, direction, content, extracted_data, trigger_type, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (user_id, "inbound", content, None, None, created_at),
+        )
+
+
+def test_get_recent_messages_filters_by_date(tmp_db_path: Path) -> None:
+    """Messages older than the days window should not be returned."""
+    init_db(str(tmp_db_path))
+    now = datetime.now(timezone.utc)
+    old_ts = (now - timedelta(days=10)).isoformat()
+    recent_ts = (now - timedelta(days=1)).isoformat()
+
+    _insert_message_at("u1", "old message", old_ts)
+    _insert_message_at("u1", "recent message", recent_ts)
+
+    msgs = get_recent_messages("u1", days=7)
+    assert len(msgs) == 1
+    assert msgs[0]["content"] == "recent message"
+
+
+def test_archive_old_messages_removes_old(tmp_db_path: Path) -> None:
+    """archive_old_messages should delete messages older than the threshold."""
+    init_db(str(tmp_db_path))
+    now = datetime.now(timezone.utc)
+    old_ts = (now - timedelta(days=45)).isoformat()
+    _insert_message_at("u1", "ancient message", old_ts)
+
+    deleted = archive_old_messages("u1", days=30)
+    assert deleted == 1
+
+    # Verify it's actually gone (use a wide window so date filter doesn't hide it)
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM messages WHERE user_id = ?", ("u1",)).fetchall()
+    assert len(rows) == 0
+
+
+def test_archive_old_messages_keeps_recent(tmp_db_path: Path) -> None:
+    """archive_old_messages should not delete messages within the retention window."""
+    init_db(str(tmp_db_path))
+    now = datetime.now(timezone.utc)
+    recent_ts = (now - timedelta(days=5)).isoformat()
+    old_ts = (now - timedelta(days=45)).isoformat()
+
+    _insert_message_at("u1", "recent message", recent_ts)
+    _insert_message_at("u1", "old message", old_ts)
+
+    deleted = archive_old_messages("u1", days=30)
+    assert deleted == 1
+
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM messages WHERE user_id = ?", ("u1",)).fetchall()
+    assert len(rows) == 1
+    assert dict(rows[0])["content"] == "recent message"
