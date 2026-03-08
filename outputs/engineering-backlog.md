@@ -1720,12 +1720,12 @@ Final acceptance. The MVP is considered complete when:
 | T-010 | Strava Data Sync | M1 | T-001, T-002 | DONE |
 | T-011 | Renpho Data Sync | M1 | T-001, T-002 | DONE |
 | T-012 | Unified Data Sync Runner | M1 | T-008–T-011 | DONE |
-| T-013 | Onboarding Conversation | M1 | T-006 | IN_PROGRESS |
-| A-M1 | Milestone 1 Acceptance | M1 | T-003–T-013 | BLOCKED |
-| T-014 | Morning Check-In | M2 | A-M1 | BLOCKED |
-| T-015 | Evening Check-In | M2 | A-M1 | BLOCKED |
+| T-013 | Onboarding Conversation | M1 | T-006 | DONE |
+| A-M1 | Milestone 1 Acceptance | M1 | T-003–T-013 | DONE |
+| T-014 | Morning Check-In | M2 | A-M1 | IN_PROGRESS |
+| T-015 | Evening Check-In | M2 | A-M1 | IN_PROGRESS |
 | T-016 | Frequency Governor | M2 | T-002 | DONE |
-| T-017 | Engagement State Machine | M2 | T-016 | IN_PROGRESS |
+| T-017 | Engagement State Machine | M2 | T-016 | DONE |
 | T-018 | Proactive Nudges | M2 | T-014–T-016 | BLOCKED |
 | T-019 | Cron Configuration | M2 | T-014, T-015, T-018, T-012 | BLOCKED |
 | A-M2 | Milestone 2 Acceptance | M2 | T-014–T-019 | BLOCKED |
