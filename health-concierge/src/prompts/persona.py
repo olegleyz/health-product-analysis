@@ -52,6 +52,17 @@ professional. If it's getting worse, it's worth getting checked out."
 resources (988 Suicide & Crisis Lifeline, Crisis Text Line: HOME to 741741) \
 and do not continue the normal conversation.
 
+## Pattern awareness
+
+You have access to daily summaries spanning recent days. Use them to:
+- Reference real patterns you see: "Your sleep has been improving this week" \
+(only if the data shows it).
+- Connect behaviors across days: "You tend to eat heavier after stressful days" \
+(only if the data shows it).
+- Ground your observations in specific dates or data points when helpful.
+- NEVER fabricate trends that are not clearly supported by the summaries provided.
+- If there are no daily summaries yet, do not speculate about patterns.
+
 ## Anti-patterns — never do these
 
 - Never guilt-trip: no "you said you'd work out but didn't," no "you missed \
@@ -95,16 +106,34 @@ tomorrow?"
 """
 
 
+# Approximate characters-per-token ratio for budget estimation.
+_CHARS_PER_TOKEN = 4
+
+# Default token budget for the context block (excludes system prompt).
+DEFAULT_CONTEXT_TOKEN_BUDGET = 3000
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count from character length."""
+    return len(text) // _CHARS_PER_TOKEN
+
+
 def format_context_block(
     user_profile: dict | None = None,
     recent_messages: list[dict] | None = None,
     device_data_summary: str | None = None,
     daily_summaries: list[dict] | None = None,
+    token_budget: int = DEFAULT_CONTEXT_TOKEN_BUDGET,
 ) -> str:
     """Assemble contextual information for the LLM prompt.
 
     Each parameter is optional. Sections for missing or empty data are
     silently omitted — no "no data available" filler.
+
+    When the assembled context exceeds *token_budget* (estimated at ~4
+    chars per token), the function trims content in this order:
+    1. Remove oldest daily summaries one at a time.
+    2. Remove oldest messages one at a time.
 
     Args:
         user_profile: User info with keys like name, goals, preferences,
@@ -112,47 +141,66 @@ def format_context_block(
         recent_messages: List of dicts with at least 'role' and 'content'.
         device_data_summary: Pre-formatted string of recent device readings.
         daily_summaries: List of dicts with at least 'date' and 'summary'.
+        token_budget: Maximum estimated tokens for the context block.
 
     Returns:
         A string block to include in the prompt context, or empty string
         if all inputs are None/empty.
     """
-    sections: list[str] = []
+    # Work with mutable copies so we can trim.
+    summaries = list(daily_summaries) if daily_summaries else []
+    messages = list(recent_messages) if recent_messages else []
 
-    if user_profile:
-        parts: list[str] = []
-        if name := user_profile.get("name"):
-            parts.append(f"Name: {name}")
-        if goals := user_profile.get("goals"):
-            parts.append(f"Goals: {goals}")
-        if preferences := user_profile.get("preferences"):
-            parts.append(f"Preferences: {preferences}")
-        if tone := user_profile.get("tone_preference"):
-            parts.append(f"Tone preference: {tone}")
-        if parts:
-            sections.append("## User profile\n" + "\n".join(parts))
+    def _build() -> str:
+        sections: list[str] = []
 
-    if recent_messages:
-        lines: list[str] = []
-        for msg in recent_messages:
-            role = msg.get("role", "unknown")
-            content = msg.get("content", "")
-            lines.append(f"{role}: {content}")
-        if lines:
-            sections.append("## Recent conversation\n" + "\n".join(lines))
+        if user_profile:
+            parts: list[str] = []
+            if name := user_profile.get("name"):
+                parts.append(f"Name: {name}")
+            if goals := user_profile.get("goals"):
+                parts.append(f"Goals: {goals}")
+            if preferences := user_profile.get("preferences"):
+                parts.append(f"Preferences: {preferences}")
+            if tone := user_profile.get("tone_preference"):
+                parts.append(f"Tone preference: {tone}")
+            if parts:
+                sections.append("## User profile\n" + "\n".join(parts))
 
-    if device_data_summary:
-        sections.append(f"## Recent device data\n{device_data_summary}")
+        if messages:
+            lines: list[str] = []
+            for msg in messages:
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                lines.append(f"{role}: {content}")
+            if lines:
+                sections.append(
+                    "## Recent conversation\n" + "\n".join(lines)
+                )
 
-    if daily_summaries:
-        lines = []
-        for s in daily_summaries:
-            date = s.get("date", "unknown")
-            summary = s.get("summary", "")
-            lines.append(f"[{date}] {summary}")
-        if lines:
-            sections.append(
-                "## Recent daily summaries\n" + "\n".join(lines)
-            )
+        if device_data_summary:
+            sections.append(f"## Recent device data\n{device_data_summary}")
 
-    return "\n\n".join(sections)
+        if summaries:
+            lines_s: list[str] = []
+            for s in summaries:
+                date = s.get("date", "unknown")
+                summary = s.get("summary", "")
+                lines_s.append(f"[{date}] {summary}")
+            if lines_s:
+                sections.append(
+                    "## Recent daily summaries\n" + "\n".join(lines_s)
+                )
+
+        return "\n\n".join(sections)
+
+    # Build and check budget; trim if needed.
+    result = _build()
+    while _estimate_tokens(result) > token_budget and summaries:
+        summaries.pop(0)  # Remove oldest summary first.
+        result = _build()
+    while _estimate_tokens(result) > token_budget and messages:
+        messages.pop(0)  # Then remove oldest messages.
+        result = _build()
+
+    return result
