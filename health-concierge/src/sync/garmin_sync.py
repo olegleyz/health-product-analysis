@@ -18,6 +18,31 @@ logger = logging.getLogger(__name__)
 # Token store directory for garth session persistence
 TOKEN_STORE = str(Path(settings.db_path).parent / ".garmin_tokens")
 
+# Auth failure backoff: skip sync for this many hours after a failed login
+_AUTH_BACKOFF_HOURS = 6
+_auth_fail_path = Path(settings.db_path).parent / ".garmin_auth_failed"
+
+
+def _should_skip_auth() -> bool:
+    """Check if we should skip Garmin auth due to recent failure backoff."""
+    if not _auth_fail_path.exists():
+        return False
+    try:
+        fail_time = datetime.fromisoformat(_auth_fail_path.read_text().strip())
+        if datetime.now(timezone.utc) - fail_time < timedelta(hours=_AUTH_BACKOFF_HOURS):
+            return True
+        # Backoff expired, clear the marker
+        _auth_fail_path.unlink(missing_ok=True)
+    except (ValueError, OSError):
+        _auth_fail_path.unlink(missing_ok=True)
+    return False
+
+
+def _mark_auth_failed() -> None:
+    """Record an auth failure timestamp for backoff."""
+    _auth_fail_path.parent.mkdir(parents=True, exist_ok=True)
+    _auth_fail_path.write_text(datetime.now(timezone.utc).isoformat())
+
 
 def _get_garmin_client() -> Garmin:
     """Create and authenticate a Garmin client with session caching.
@@ -31,6 +56,8 @@ def _get_garmin_client() -> Garmin:
     if token_path.exists():
         try:
             client.login(tokenstore=TOKEN_STORE)
+            # Auth succeeded — clear any backoff marker
+            _auth_fail_path.unlink(missing_ok=True)
             return client
         except GarminConnectAuthenticationError:
             logger.warning("Saved Garmin tokens expired, re-authenticating")
@@ -39,6 +66,7 @@ def _get_garmin_client() -> Garmin:
     client.login()
     token_path.mkdir(parents=True, exist_ok=True)
     client.garth.dump(TOKEN_STORE)
+    _auth_fail_path.unlink(missing_ok=True)
     return client
 
 
@@ -246,10 +274,15 @@ def sync_garmin(user_id: str) -> dict:
         "heart_rate": 0,
     }
 
+    if _should_skip_auth():
+        logger.info("Skipping Garmin sync — auth backoff active (retry in %dh)", _AUTH_BACKOFF_HOURS)
+        return result
+
     try:
         client = _get_garmin_client()
     except Exception as exc:
         logger.error("Garmin authentication failed: %s", exc)
+        _mark_auth_failed()
         return result
 
     dates = _get_sync_dates(user_id)
