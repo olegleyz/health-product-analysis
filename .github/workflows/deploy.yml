@@ -18,11 +18,4 @@ jobs:
             cd ~/health-product-analysis/health-concierge
             git pull origin master
             .venv/bin/python scripts/setup_db.py
-            BOT_PID=$(pgrep -f 'python.*src\.bot' || true)
-            if [ -n "$BOT_PID" ]; then
-              kill $BOT_PID
-              sleep 2
-            fi
-            nohup .venv/bin/python -m src.bot > logs/bot.log 2>&1 &
-            sleep 3
-            pgrep -f 'python.*src\.bot' && echo "Bot restarted successfully" || echo "ERROR: Bot failed to start"
+            bash scripts/restart_bot.sh
