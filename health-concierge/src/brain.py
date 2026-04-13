@@ -7,6 +7,7 @@ health data, and updates engagement state.
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from src.db import (
     get_daily_summaries,
@@ -100,10 +101,16 @@ def handle_message(user_id: str, text: str) -> str:
         nutrition_summary=nutrition_summary,
     )
 
-    # 3. Call LLM — include current date/time so it knows "today" vs "tomorrow"
-    now = datetime.now(timezone.utc)
+    # 3. Call LLM — include current date/time in user's local timezone
+    user_tz_name = (user_profile or {}).get("timezone") or "UTC"
+    try:
+        user_tz = ZoneInfo(user_tz_name)
+    except (KeyError, Exception):
+        user_tz = timezone.utc
+        user_tz_name = "UTC"
+    now = datetime.now(user_tz)
     date_line = (
-        f"\n\nCurrent date/time: {now.strftime('%A, %B %d, %Y %I:%M %p')} UTC.\n"
+        f"\n\nCurrent date/time: {now.strftime('%A, %B %d, %Y %I:%M %p')} ({user_tz_name}).\n"
         "Use this to distinguish between past, present, and future events. "
         "If the user discussed plans for tomorrow, do NOT check in on those "
         "plans until that day actually arrives."
