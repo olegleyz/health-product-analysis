@@ -1,0 +1,25 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            cd ~/health-product-analysis/health-concierge
+            git pull origin master
+            .venv/bin/python scripts/setup_db.py
+            pkill -f 'src.bot' || true
+            sleep 2
+            nohup .venv/bin/python -m src.bot > logs/bot.log 2>&1 &
+            sleep 2
+            pgrep -f 'src.bot' && echo "Bot restarted successfully" || echo "ERROR: Bot failed to start"
