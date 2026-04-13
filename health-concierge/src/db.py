@@ -96,6 +96,33 @@ def init_db(db_path: str | None = None) -> None:
                 last_mentioned TEXT,
                 notes TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS nutrition_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                meal_name TEXT,
+                components JSON,
+                calories REAL,
+                protein_g REAL,
+                carbs_g REAL,
+                fat_g REAL,
+                weight_g REAL,
+                confidence REAL,
+                model_version TEXT,
+                assumptions JSON,
+                image_file_id TEXT,
+                user_corrections JSON,
+                created_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS nutrition_targets (
+                user_id TEXT PRIMARY KEY,
+                calories REAL DEFAULT 2200,
+                protein_g REAL DEFAULT 120,
+                carbs_g REAL DEFAULT 250,
+                fat_g REAL DEFAULT 75,
+                updated_at TEXT
+            );
         """)
     logger.info("Database initialized at %s", _db_path)
 
@@ -405,3 +432,113 @@ def get_meals(user_id: str) -> list[dict]:
         if rec.get("tags"):
             rec["tags"] = json.loads(rec["tags"])
     return result
+
+
+# --- Nutrition Events ---
+
+def save_nutrition_event(
+    user_id: str,
+    meal_name: str,
+    components: list[dict],
+    calories: float,
+    protein_g: float,
+    carbs_g: float,
+    fat_g: float,
+    weight_g: float,
+    confidence: float,
+    model_version: str,
+    assumptions: list[str],
+    image_file_id: str,
+    user_corrections: dict | None = None,
+) -> int:
+    """Insert an immutable nutrition event. Returns the event ID."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "INSERT INTO nutrition_events "
+            "(user_id, meal_name, components, calories, protein_g, carbs_g, fat_g, "
+            "weight_g, confidence, model_version, assumptions, image_file_id, "
+            "user_corrections, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                user_id,
+                meal_name,
+                json.dumps(components),
+                calories,
+                protein_g,
+                carbs_g,
+                fat_g,
+                weight_g,
+                confidence,
+                model_version,
+                json.dumps(assumptions),
+                image_file_id,
+                json.dumps(user_corrections) if user_corrections else None,
+                _now(),
+            ),
+        )
+        return cursor.lastrowid
+
+
+def get_nutrition_events(user_id: str, date: str) -> list[dict]:
+    """Return all nutrition events for a user on a given calendar date (YYYY-MM-DD)."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM nutrition_events "
+            "WHERE user_id = ? AND created_at LIKE ? "
+            "ORDER BY created_at ASC",
+            (user_id, f"{date}%"),
+        ).fetchall()
+    result = _rows_to_dicts(rows)
+    for rec in result:
+        for field in ("components", "assumptions", "user_corrections"):
+            if rec.get(field):
+                rec[field] = json.loads(rec[field])
+    return result
+
+
+# --- Nutrition Targets ---
+
+_NUTRITION_TARGET_DEFAULTS = {
+    "calories": 2200,
+    "protein_g": 120,
+    "carbs_g": 250,
+    "fat_g": 75,
+}
+
+
+def get_nutrition_targets(user_id: str) -> dict:
+    """Return nutrition targets for a user, with defaults if no record exists."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM nutrition_targets WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    if row is None:
+        return {"user_id": user_id, **_NUTRITION_TARGET_DEFAULTS}
+    return dict(row)
+
+
+def upsert_nutrition_targets(user_id: str, **fields) -> None:
+    """Create or update nutrition targets for a user."""
+    now = _now()
+    with get_connection() as conn:
+        existing = conn.execute(
+            "SELECT user_id FROM nutrition_targets WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        if existing is None:
+            # Insert with defaults for unspecified fields
+            all_fields = {**_NUTRITION_TARGET_DEFAULTS, **fields}
+            all_fields["user_id"] = user_id
+            all_fields["updated_at"] = now
+            cols = ", ".join(all_fields.keys())
+            placeholders = ", ".join("?" for _ in all_fields)
+            conn.execute(
+                f"INSERT INTO nutrition_targets ({cols}) VALUES ({placeholders})",
+                tuple(all_fields.values()),
+            )
+        else:
+            fields["updated_at"] = now
+            set_clause = ", ".join(f"{k} = ?" for k in fields)
+            conn.execute(
+                f"UPDATE nutrition_targets SET {set_clause} WHERE user_id = ?",
+                (*fields.values(), user_id),
+            )

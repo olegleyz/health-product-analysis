@@ -29,7 +29,8 @@ extract structured information as JSON. Return ONLY valid JSON with this schema:
   "mood": "string or null",
   "weight": "number or null",
   "readiness": "number or null",
-  "notable": "string or null"
+  "notable": "string or null",
+  "nutrition": {"calories": "number or null", "protein_g": "number or null", "carbs_g": "number or null", "fat_g": "number or null", "meals_count": "number or null"}
 }
 Omit fields that have no data (use null for scalars, empty arrays for lists).
 Return ONLY the JSON object, no markdown fences or extra text."""
@@ -64,7 +65,9 @@ def _get_device_data_for_date(user_id: str, date: str) -> list[dict]:
     return [r for r in records if r.get("recorded_at", "") <= end]
 
 
-def _build_day_context(messages: list[dict], device_data: list[dict]) -> str:
+def _build_day_context(
+    messages: list[dict], device_data: list[dict], nutrition_events: list[dict] | None = None
+) -> str:
     """Build a text representation of the day's data for the LLM."""
     parts = []
 
@@ -81,6 +84,14 @@ def _build_day_context(messages: list[dict], device_data: list[dict]) -> str:
                 f"[{rec.get('recorded_at', '')}] {rec['source']}/{rec['data_type']}: "
                 f"{json.dumps(rec['data'])}"
             )
+
+    if nutrition_events:
+        parts.append("\n## Nutrition (logged meals)")
+        for event in nutrition_events:
+            name = event.get("meal_name", "Unknown")
+            cal = event.get("calories", 0)
+            pro = event.get("protein_g", 0)
+            parts.append(f"- {name}: {cal:.0f} kcal, {pro:.0f}g protein")
 
     if not parts:
         return "No conversations or device data recorded for this day."
@@ -109,7 +120,8 @@ def generate_daily_summary(user_id: str, date: str) -> dict:
     """
     messages = _get_messages_for_date(user_id, date)
     device_data = _get_device_data_for_date(user_id, date)
-    context = _build_day_context(messages, device_data)
+    nutrition_events = db.get_nutrition_events(user_id, date)
+    context = _build_day_context(messages, device_data, nutrition_events)
 
     user_message = f"Date: {date}\n\n{context}"
 

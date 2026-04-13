@@ -137,6 +137,7 @@ def format_context_block(
     device_data_summary: str | None = None,
     daily_summaries: list[dict] | None = None,
     meal_repertoire: list[dict] | None = None,
+    nutrition_summary: str | None = None,
     token_budget: int = DEFAULT_CONTEXT_TOKEN_BUDGET,
 ) -> str:
     """Assemble contextual information for the LLM prompt.
@@ -157,6 +158,7 @@ def format_context_block(
         daily_summaries: List of dicts with at least 'date' and 'summary'.
         meal_repertoire: List of meal dicts with 'name', 'tags',
             'times_mentioned'. Top meals sorted by frequency.
+        nutrition_summary: Pre-formatted string of today's nutrition state.
         token_budget: Maximum estimated tokens for the context block.
 
     Returns:
@@ -229,6 +231,9 @@ def format_context_block(
                     "suggesting from this list when relevant.\n"
                     + "\n".join(meal_lines)
                 )
+
+        if nutrition_summary:
+            sections.append(f"## Today's nutrition\n{nutrition_summary}")
 
         return "\n\n".join(sections)
 

@@ -14,6 +14,7 @@ from src import db
 from src.governor import can_send
 from src.llm import call_llm
 from src.meals import get_meal_repertoire
+from src.nutrition import format_daily_summary, get_daily_nutrition
 from src.prompts.persona import SYSTEM_PROMPT, format_context_block
 
 logger = logging.getLogger(__name__)
@@ -278,6 +279,7 @@ def _build_evening_prompt(
     activities_summary: str,
     recent_messages: list[dict],
     meal_repertoire: list[dict] | None = None,
+    nutrition_summary: str | None = None,
 ) -> str:
     """Build the user-message prompt for the evening check-in LLM call."""
     context = format_context_block(
@@ -288,6 +290,7 @@ def _build_evening_prompt(
         ],
         device_data_summary=activities_summary or None,
         meal_repertoire=meal_repertoire,
+        nutrition_summary=nutrition_summary,
     )
 
     if activities:
@@ -351,10 +354,20 @@ def generate_evening_checkin(user_id: str) -> str | None:
     # Step 5: Load meal repertoire for nutrition context
     meal_repertoire = get_meal_repertoire(user_id)
 
+    # Step 5b: Load today's nutrition state
+    today = _today_iso()
+    daily_nutrition = get_daily_nutrition(user_id, today)
+    nutrition_summary = (
+        format_daily_summary(daily_nutrition)
+        if daily_nutrition.get("meals_count", 0) > 0
+        else None
+    )
+
     # Step 6: Build prompt and call LLM
     evening_prompt = _build_evening_prompt(
         user_profile, activities, activities_summary, recent_msgs,
         meal_repertoire=meal_repertoire or None,
+        nutrition_summary=nutrition_summary,
     )
 
     message = call_llm(SYSTEM_PROMPT, evening_prompt, max_tokens=256)

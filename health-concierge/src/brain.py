@@ -18,6 +18,7 @@ from src.db import (
     update_engagement_state,
 )
 from src.llm import call_llm, call_llm_json
+from src.nutrition import format_daily_summary, get_daily_nutrition
 from src.prompts.persona import SYSTEM_PROMPT, format_context_block
 
 logger = logging.getLogger(__name__)
@@ -81,11 +82,21 @@ def handle_message(user_id: str, text: str) -> str:
         for msg in recent_messages
     ]
 
+    # Load today's nutrition summary for context
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    daily_nutrition = get_daily_nutrition(user_id, today)
+    nutrition_summary = (
+        format_daily_summary(daily_nutrition)
+        if daily_nutrition.get("meals_count", 0) > 0
+        else None
+    )
+
     context_block = format_context_block(
         user_profile=user_profile,
         recent_messages=formatted_messages,
         device_data_summary=device_summary,
         daily_summaries=daily_summaries,
+        nutrition_summary=nutrition_summary,
     )
 
     # 3. Call LLM — include current date/time so it knows "today" vs "tomorrow"

@@ -32,6 +32,7 @@ def test_init_db_creates_all_tables(tmp_db_path: Path) -> None:
     expected = sorted([
         "users", "messages", "daily_summaries",
         "engagement_state", "device_data", "meals",
+        "nutrition_events", "nutrition_targets",
     ])
     assert table_names == expected
 
