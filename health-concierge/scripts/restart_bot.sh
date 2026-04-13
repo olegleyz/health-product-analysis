@@ -1,28 +1,31 @@
 #!/usr/bin/env bash
-# Restart the bot process. Safe to call from CI/CD.
+# Restart the bot process via systemd. Safe to call from CI/CD.
 set -euo pipefail
 
 APP_DIR="$HOME/health-product-analysis/health-concierge"
-cd "$APP_DIR"
 
-# Stop existing bot (if running)
+# Install service file if not already there or if it changed
+cp "$APP_DIR/scripts/health-concierge.service" /etc/systemd/system/health-concierge.service
+systemctl daemon-reload
+systemctl enable health-concierge
+
+# Kill any stray non-systemd bot processes
 BOT_PID=$(pgrep -f 'python -m src\.bot' 2>/dev/null || true)
-if [ -n "$BOT_PID" ]; then
-    echo "Stopping bot (PID $BOT_PID)..."
+SYSTEMD_PID=$(systemctl show health-concierge --property=MainPID --value 2>/dev/null || echo "0")
+if [ -n "$BOT_PID" ] && [ "$BOT_PID" != "$SYSTEMD_PID" ]; then
+    echo "Killing stray bot process (PID $BOT_PID)..."
     kill "$BOT_PID" 2>/dev/null || true
     sleep 2
 fi
 
-# Start bot in a fully detached session so it survives SSH disconnect
-echo "Starting bot..."
-setsid .venv/bin/python -m src.bot >> logs/bot.log 2>&1 &
+# Restart via systemd
+systemctl restart health-concierge
 sleep 3
 
-NEW_PID=$(pgrep -f 'python -m src\.bot' 2>/dev/null || true)
-if [ -n "$NEW_PID" ]; then
-    echo "Bot started (PID $NEW_PID)"
+if systemctl is-active --quiet health-concierge; then
+    echo "Bot started via systemd ($(systemctl show health-concierge --property=MainPID --value))"
 else
     echo "ERROR: Bot failed to start"
-    tail -10 logs/bot.log
+    systemctl status health-concierge --no-pager
     exit 1
 fi
