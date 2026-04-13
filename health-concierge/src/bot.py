@@ -21,7 +21,7 @@ from telegram.ext import (
 )
 
 from config import settings
-from src.db import save_message, save_nutrition_event
+from src.db import save_message, save_nutrition_event, user_today
 from src.meals import process_meal_mention
 from src.nutrition import (
     estimate_meal,
@@ -205,7 +205,7 @@ async def _confirm_estimation(query, user_id: str) -> None:
     del _pending[user_id]
 
     # Get daily nutrition summary
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = user_today(user_id)
     daily = get_daily_nutrition(user_id, today)
     summary = format_daily_summary(daily)
 
@@ -286,7 +286,7 @@ async def _handle_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if user_id not in settings.user_telegram_ids:
         return
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = user_today(user_id)
     daily = get_daily_nutrition(user_id, today)
     summary = format_daily_summary(daily)
 

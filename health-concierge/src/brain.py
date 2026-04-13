@@ -16,6 +16,7 @@ from src.db import (
     get_user,
     save_message,
     update_engagement_state,
+    user_today,
 )
 from src.llm import call_llm, call_llm_json
 from src.nutrition import format_daily_summary, get_daily_nutrition
@@ -83,7 +84,7 @@ def handle_message(user_id: str, text: str) -> str:
     ]
 
     # Load today's nutrition summary for context
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = user_today(user_id)
     daily_nutrition = get_daily_nutrition(user_id, today)
     nutrition_summary = (
         format_daily_summary(daily_nutrition)

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src import db
+from src.db import user_today
 from src.governor import can_send
 from src.llm import call_llm
 from src.meals import get_meal_repertoire
@@ -200,14 +201,16 @@ def generate_morning_checkin(user_id: str) -> str | None:
 # --- Evening check-in ---
 
 
-def _today_iso() -> str:
-    """Return today's date as ISO date string (YYYY-MM-DD) in UTC."""
+def _today_iso(user_id: str | None = None) -> str:
+    """Return today's date as ISO date string (YYYY-MM-DD) in the user's timezone."""
+    if user_id:
+        return user_today(user_id)
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def _get_todays_activities(user_id: str) -> list[dict]:
     """Fetch today's activity records from device data (garmin/strava)."""
-    today = _today_iso()
+    today = _today_iso(user_id)
     activities: list[dict] = []
     for source in ("garmin", "strava"):
         records = db.get_device_data(
@@ -233,7 +236,7 @@ def _format_activities_summary(activities: list[dict]) -> str:
 
 def _morning_checkin_sent_today(user_id: str) -> bool:
     """Check if a morning check-in was sent today."""
-    today = _today_iso()
+    today = _today_iso(user_id)
     with db.get_connection() as conn:
         row = conn.execute(
             "SELECT id FROM messages "
@@ -248,7 +251,7 @@ def _morning_checkin_sent_today(user_id: str) -> bool:
 
 def _user_replied_since_morning_checkin(user_id: str) -> bool:
     """Check if the user sent any message after today's morning check-in."""
-    today = _today_iso()
+    today = _today_iso(user_id)
     with db.get_connection() as conn:
         morning_row = conn.execute(
             "SELECT created_at FROM messages "
@@ -355,7 +358,7 @@ def generate_evening_checkin(user_id: str) -> str | None:
     meal_repertoire = get_meal_repertoire(user_id)
 
     # Step 5b: Load today's nutrition state
-    today = _today_iso()
+    today = _today_iso(user_id)
     daily_nutrition = get_daily_nutrition(user_id, today)
     nutrition_summary = (
         format_daily_summary(daily_nutrition)

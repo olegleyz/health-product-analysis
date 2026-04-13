@@ -9,6 +9,7 @@ import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from config import settings
 
@@ -21,6 +22,20 @@ _db_path: str | None = None
 def _now() -> str:
     """Return current UTC time as ISO 8601 string."""
     return datetime.now(timezone.utc).isoformat()
+
+
+def user_today(user_id: str) -> str:
+    """Return today's date (YYYY-MM-DD) in the user's local timezone.
+
+    Falls back to UTC if the user has no timezone set or doesn't exist.
+    """
+    user = get_user(user_id)
+    tz_name = (user or {}).get("timezone") or "UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except (KeyError, Exception):
+        tz = timezone.utc
+    return datetime.now(tz).strftime("%Y-%m-%d")
 
 
 def init_db(db_path: str | None = None) -> None:
