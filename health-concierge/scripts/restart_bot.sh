@@ -13,13 +13,13 @@ if [ -n "$BOT_PID" ]; then
     sleep 2
 fi
 
-# Start bot
+# Start bot in a fully detached session so it survives SSH disconnect
 echo "Starting bot..."
-nohup .venv/bin/python -m src.bot >> logs/bot.log 2>&1 &
-NEW_PID=$!
-sleep 2
+setsid .venv/bin/python -m src.bot >> logs/bot.log 2>&1 &
+sleep 3
 
-if kill -0 "$NEW_PID" 2>/dev/null; then
+NEW_PID=$(pgrep -f 'python -m src\.bot' 2>/dev/null || true)
+if [ -n "$NEW_PID" ]; then
     echo "Bot started (PID $NEW_PID)"
 else
     echo "ERROR: Bot failed to start"
